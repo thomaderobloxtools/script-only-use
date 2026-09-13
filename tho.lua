@@ -3,19 +3,11 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local TeleportService = game:GetService("TeleportService")
-local HttpService = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
-
-local DEV_ACCESS =
-	RunService:IsStudio()
-	or (
-		game.CreatorType == Enum.CreatorType.User
-		and game.CreatorId == LocalPlayer.UserId
-	)
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
 local GUI_NAME = "ThoScript"
-
 local BLUE_1 = Color3.fromRGB(7, 18, 38)
 local BLUE_2 = Color3.fromRGB(10, 28, 58)
 local BLUE_3 = Color3.fromRGB(15, 48, 98)
@@ -23,31 +15,35 @@ local BLUE_4 = Color3.fromRGB(20, 91, 170)
 local BLUE_5 = Color3.fromRGB(0, 170, 255)
 local WHITE = Color3.fromRGB(235, 245, 255)
 local MUTED = Color3.fromRGB(145, 170, 200)
-local RED = Color3.fromRGB(255, 80, 95)
 local GREEN = Color3.fromRGB(40, 220, 140)
+local RED = Color3.fromRGB(255, 80, 95)
 
-local function tween(instance, time, properties, style, direction)
-	local animation = TweenService:Create(
-		instance,
-		TweenInfo.new(
-			time or 0.2,
-			style or Enum.EasingStyle.Quart,
-			direction or Enum.EasingDirection.Out
-		),
-		properties
+local DEV_ACCESS = RunService:IsStudio()
+	or (
+		game.CreatorType == Enum.CreatorType.User
+		and game.CreatorId == LocalPlayer.UserId
 	)
-	animation:Play()
-	return animation
+
+local old = PlayerGui:FindFirstChild(GUI_NAME)
+if old then
+	old:Destroy()
 end
 
-local function corner(parent, radius)
+local function tween(object, time, properties)
+	local info = TweenInfo.new(time or 0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+	local t = TweenService:Create(object, info, properties)
+	t:Play()
+	return t
+end
+
+local function addCorner(parent, radius)
 	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, radius or 8)
+	c.CornerRadius = UDim.new(0, radius)
 	c.Parent = parent
 	return c
 end
 
-local function stroke(parent, color, transparency, thickness)
+local function addStroke(parent, color, transparency, thickness)
 	local s = Instance.new("UIStroke")
 	s.Color = color
 	s.Transparency = transparency or 0
@@ -56,21 +52,11 @@ local function stroke(parent, color, transparency, thickness)
 	return s
 end
 
-local function padding(parent, left, right, top, bottom)
-	local p = Instance.new("UIPadding")
-	p.PaddingLeft = UDim.new(0, left or 0)
-	p.PaddingRight = UDim.new(0, right or 0)
-	p.PaddingTop = UDim.new(0, top or 0)
-	p.PaddingBottom = UDim.new(0, bottom or 0)
-	p.Parent = parent
-	return p
-end
-
-local function makeText(parent, text, size, font, color)
+local function addText(parent, text, size, font, color)
 	local label = Instance.new("TextLabel")
 	label.BackgroundTransparency = 1
 	label.Text = text
-	label.TextSize = size or 14
+	label.TextSize = size
 	label.Font = font or Enum.Font.Gotham
 	label.TextColor3 = color or WHITE
 	label.TextXAlignment = Enum.TextXAlignment.Left
@@ -78,109 +64,13 @@ local function makeText(parent, text, size, font, color)
 	return label
 end
 
-local old = LocalPlayer:FindFirstChildOfClass("PlayerGui"):FindFirstChild(GUI_NAME)
-if old then
-	old:Destroy()
-end
-
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = GUI_NAME
 ScreenGui.ResetOnSpawn = false
 ScreenGui.IgnoreGuiInset = true
 ScreenGui.DisplayOrder = 999999
-ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-
-local Loading = Instance.new("Frame")
-Loading.Size = UDim2.fromScale(1, 1)
-Loading.BackgroundColor3 = BLUE_1
-Loading.BorderSizePixel = 0
-Loading.Parent = ScreenGui
-
-local LoadingGradient = Instance.new("UIGradient")
-LoadingGradient.Color = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, BLUE_1),
-	ColorSequenceKeypoint.new(0.5, BLUE_3),
-	ColorSequenceKeypoint.new(1, Color3.fromRGB(2, 8, 20))
-})
-LoadingGradient.Rotation = 35
-LoadingGradient.Parent = Loading
-
-local Glow = Instance.new("Frame")
-Glow.AnchorPoint = Vector2.new(0.5, 0.5)
-Glow.Position = UDim2.fromScale(0.5, 0.46)
-Glow.Size = UDim2.fromOffset(190, 190)
-Glow.BackgroundColor3 = BLUE_5
-Glow.BackgroundTransparency = 0.9
-Glow.Parent = Loading
-corner(Glow, 100)
-
-local Title = makeText(Loading, "Tho Script", 31, Enum.Font.GothamBold, WHITE)
-Title.AnchorPoint = Vector2.new(0.5, 0.5)
-Title.Position = UDim2.fromScale(0.5, 0.45)
-Title.Size = UDim2.fromOffset(300, 50)
-Title.TextXAlignment = Enum.TextXAlignment.Center
-
-local Subtitle = makeText(Loading, "Đang khởi tạo giao diện...", 14, Enum.Font.GothamMedium, MUTED)
-Subtitle.AnchorPoint = Vector2.new(0.5, 0.5)
-Subtitle.Position = UDim2.fromScale(0.5, 0.51)
-Subtitle.Size = UDim2.fromOffset(400, 30)
-Subtitle.TextXAlignment = Enum.TextXAlignment.Center
-
-local ProgressBackground = Instance.new("Frame")
-ProgressBackground.AnchorPoint = Vector2.new(0.5, 0)
-ProgressBackground.Position = UDim2.fromScale(0.5, 0.57)
-ProgressBackground.Size = UDim2.fromOffset(320, 7)
-ProgressBackground.BackgroundColor3 = Color3.fromRGB(30, 50, 80)
-ProgressBackground.BorderSizePixel = 0
-ProgressBackground.Parent = Loading
-corner(ProgressBackground, 10)
-
-local Progress = Instance.new("Frame")
-Progress.Size = UDim2.new(0, 0, 1, 0)
-Progress.BackgroundColor3 = BLUE_5
-Progress.BorderSizePixel = 0
-Progress.Parent = ProgressBackground
-corner(Progress, 10)
-
-local Percentage = makeText(Loading, "0%", 13, Enum.Font.GothamBold, WHITE)
-Percentage.AnchorPoint = Vector2.new(0.5, 0)
-Percentage.Position = UDim2.fromScale(0.5, 0.595)
-Percentage.Size = UDim2.fromOffset(100, 25)
-Percentage.TextXAlignment = Enum.TextXAlignment.Center
-
-task.spawn(function()
-	for i = 0, 100 do
-		Progress.Size = UDim2.new(i / 100, 0, 1, 0)
-		Percentage.Text = i .. "%"
-		if i < 30 then
-			Subtitle.Text = "Đang khởi tạo giao diện..."
-		elseif i < 60 then
-			Subtitle.Text = "Đang tải hệ thống..."
-		elseif i < 90 then
-			Subtitle.Text = "Đang hoàn thiện..."
-		else
-			Subtitle.Text = "Sẵn sàng"
-		end
-		task.wait(0.012)
-	end
-
-	task.wait(0.35)
-
-	tween(Loading, 0.35, {
-		BackgroundTransparency = 1
-	})
-
-	for _, object in ipairs(Loading:GetDescendants()) do
-		if object:IsA("TextLabel") then
-			tween(object, 0.25, {TextTransparency = 1})
-		elseif object:IsA("Frame") then
-			tween(object, 0.25, {BackgroundTransparency = 1})
-		end
-	end
-
-	task.wait(0.4)
-	Loading:Destroy()
-end)
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = PlayerGui
 
 local Main = Instance.new("Frame")
 Main.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -190,8 +80,8 @@ Main.BackgroundColor3 = BLUE_1
 Main.BorderSizePixel = 0
 Main.ClipsDescendants = true
 Main.Parent = ScreenGui
-corner(Main, 13)
-stroke(Main, Color3.fromRGB(35, 105, 180), 0.35, 1)
+addCorner(Main, 14)
+addStroke(Main, Color3.fromRGB(35, 105, 180), 0.35, 1)
 
 local MainGradient = Instance.new("UIGradient")
 MainGradient.Color = ColorSequence.new({
@@ -205,24 +95,22 @@ MainGradient.Parent = Main
 local Header = Instance.new("Frame")
 Header.Size = UDim2.new(1, 0, 0, 58)
 Header.BackgroundColor3 = Color3.fromRGB(8, 30, 62)
-Header.BackgroundTransparency = 0.08
 Header.BorderSizePixel = 0
 Header.Parent = Main
 
 local HeaderLine = Instance.new("Frame")
-HeaderLine.AnchorPoint = Vector2.new(0, 1)
-HeaderLine.Position = UDim2.fromScale(0, 1)
+HeaderLine.Position = UDim2.new(0, 0, 1, -1)
 HeaderLine.Size = UDim2.new(1, 0, 0, 1)
 HeaderLine.BackgroundColor3 = BLUE_5
 HeaderLine.BackgroundTransparency = 0.65
 HeaderLine.BorderSizePixel = 0
 HeaderLine.Parent = Header
 
-local MenuTitle = makeText(Header, "Tho Script", 19, Enum.Font.GothamBold, WHITE)
-MenuTitle.Position = UDim2.fromOffset(20, 0)
-MenuTitle.Size = UDim2.fromOffset(250, 58)
+local MenuTitle = addText(Header, "Tho Script", 19, Enum.Font.GothamBold, WHITE)
+MenuTitle.Position = UDim2.fromOffset(20, 7)
+MenuTitle.Size = UDim2.fromOffset(250, 25)
 
-local MenuSubtitle = makeText(Header, "Personal utility interface", 11, Enum.Font.GothamMedium, MUTED)
+local MenuSubtitle = addText(Header, "Personal utility interface", 10, Enum.Font.GothamMedium, MUTED)
 MenuSubtitle.Position = UDim2.fromOffset(20, 31)
 MenuSubtitle.Size = UDim2.fromOffset(250, 20)
 
@@ -241,31 +129,27 @@ HeaderLayout.Padding = UDim.new(0, 5)
 HeaderLayout.Parent = HeaderButtons
 
 local function makeHeaderButton(text)
-	local button = Instance.new("TextButton")
-	button.Size = UDim2.fromOffset(36, 30)
-	button.BackgroundColor3 = Color3.fromRGB(15, 47, 90)
-	button.BorderSizePixel = 0
-	button.Text = text
-	button.TextSize = 14
-	button.Font = Enum.Font.GothamBold
-	button.TextColor3 = WHITE
-	button.AutoButtonColor = false
-	button.Parent = HeaderButtons
-	corner(button, 7)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.fromOffset(36, 30)
+	b.BackgroundColor3 = Color3.fromRGB(15, 47, 90)
+	b.BorderSizePixel = 0
+	b.Text = text
+	b.TextSize = 14
+	b.Font = Enum.Font.GothamBold
+	b.TextColor3 = WHITE
+	b.AutoButtonColor = false
+	b.Parent = HeaderButtons
+	addCorner(b, 7)
 
-	button.MouseEnter:Connect(function()
-		tween(button, 0.15, {
-			BackgroundColor3 = BLUE_4
-		})
+	b.MouseEnter:Connect(function()
+		tween(b, 0.12, {BackgroundColor3 = BLUE_4})
 	end)
 
-	button.MouseLeave:Connect(function()
-		tween(button, 0.15, {
-			BackgroundColor3 = Color3.fromRGB(15, 47, 90)
-		})
+	b.MouseLeave:Connect(function()
+		tween(b, 0.12, {BackgroundColor3 = Color3.fromRGB(15, 47, 90)})
 	end)
 
-	return button
+	return b
 end
 
 local MinimizeButton = makeHeaderButton("-")
@@ -276,18 +160,22 @@ local Sidebar = Instance.new("Frame")
 Sidebar.Position = UDim2.fromOffset(0, 58)
 Sidebar.Size = UDim2.new(0, 190, 1, -58)
 Sidebar.BackgroundColor3 = Color3.fromRGB(6, 24, 50)
-Sidebar.BackgroundTransparency = 0.1
 Sidebar.BorderSizePixel = 0
 Sidebar.Parent = Main
 
-local SidebarPadding = padding(Sidebar, 12, 12, 16, 15)
+local SidebarPadding = Instance.new("UIPadding")
+SidebarPadding.PaddingLeft = UDim.new(0, 12)
+SidebarPadding.PaddingRight = UDim.new(0, 12)
+SidebarPadding.PaddingTop = UDim.new(0, 15)
+SidebarPadding.PaddingBottom = UDim.new(0, 15)
+SidebarPadding.Parent = Sidebar
 
 local SidebarLayout = Instance.new("UIListLayout")
 SidebarLayout.Padding = UDim.new(0, 8)
 SidebarLayout.SortOrder = Enum.SortOrder.LayoutOrder
 SidebarLayout.Parent = Sidebar
 
-local TabsTitle = makeText(Sidebar, "CHỨC NĂNG", 10, Enum.Font.GothamBold, MUTED)
+local TabsTitle = addText(Sidebar, "CHỨC NĂNG", 10, Enum.Font.GothamBold, MUTED)
 TabsTitle.Size = UDim2.new(1, 0, 0, 25)
 
 local Content = Instance.new("Frame")
@@ -299,10 +187,9 @@ Content.Parent = Main
 
 local TabFrames = {}
 local TabButtons = {}
-
 local currentTab = "Player"
 
-local function createTabButton(name, order)
+local function createTab(name, order)
 	local button = Instance.new("TextButton")
 	button.LayoutOrder = order
 	button.Size = UDim2.new(1, 0, 0, 43)
@@ -312,122 +199,101 @@ local function createTabButton(name, order)
 	button.Text = ""
 	button.AutoButtonColor = false
 	button.Parent = Sidebar
-	corner(button, 8)
+	addCorner(button, 8)
 
-	local Accent = Instance.new("Frame")
-	Accent.Position = UDim2.fromOffset(0, 8)
-	Accent.Size = UDim2.fromOffset(3, 27)
-	Accent.BackgroundColor3 = BLUE_5
-	Accent.BackgroundTransparency = 1
-	Accent.BorderSizePixel = 0
-	Accent.Parent = button
-	corner(Accent, 5)
+	local accent = Instance.new("Frame")
+	accent.Position = UDim2.fromOffset(0, 8)
+	accent.Size = UDim2.fromOffset(3, 27)
+	accent.BackgroundColor3 = BLUE_5
+	accent.BackgroundTransparency = name == "Player" and 0 or 1
+	accent.BorderSizePixel = 0
+	accent.Parent = button
+	addCorner(accent, 4)
 
-	local Label = makeText(button, name, 13, Enum.Font.GothamSemibold, MUTED)
-	Label.Position = UDim2.fromOffset(15, 0)
-	Label.Size = UDim2.new(1, -20, 1, 0)
+	local label = addText(button, name, 13, Enum.Font.GothamSemibold, name == "Player" and WHITE or MUTED)
+	label.Position = UDim2.fromOffset(15, 0)
+	label.Size = UDim2.new(1, -20, 1, 0)
 
 	button.MouseEnter:Connect(function()
 		if currentTab ~= name then
-			tween(button, 0.15, {
-				BackgroundTransparency = 0.12
-			})
-			tween(Label, 0.15, {
-				TextColor3 = WHITE
-			})
+			tween(button, 0.12, {BackgroundTransparency = 0.12})
+			tween(label, 0.12, {TextColor3 = WHITE})
 		end
 	end)
 
 	button.MouseLeave:Connect(function()
 		if currentTab ~= name then
-			tween(button, 0.15, {
-				BackgroundTransparency = 0.35
-			})
-			tween(Label, 0.15, {
-				TextColor3 = MUTED
-			})
+			tween(button, 0.12, {BackgroundTransparency = 0.35})
+			tween(label, 0.12, {TextColor3 = MUTED})
 		end
 	end)
 
 	button.Activated:Connect(function()
-		local previous = currentTab
 		currentTab = name
 
 		for tabName, frame in pairs(TabFrames) do
 			if tabName == name then
 				frame.Visible = true
-				frame.Position = UDim2.fromOffset(20, 20)
-				tween(frame, 0.22, {
-					Position = UDim2.fromOffset(0, 20)
-				})
+				frame.Position = UDim2.fromOffset(14, 0)
+				tween(frame, 0.18, {Position = UDim2.fromOffset(0, 0)})
 			else
 				frame.Visible = false
 			end
 		end
 
 		for tabName, data in pairs(TabButtons) do
-			if tabName == name then
-				tween(data.button, 0.15, {
-					BackgroundTransparency = 0.03
-				})
-				tween(data.label, 0.15, {
-					TextColor3 = WHITE
-				})
-				tween(data.accent, 0.15, {
-					BackgroundTransparency = 0
-				})
-			else
-				tween(data.button, 0.15, {
-					BackgroundTransparency = 0.35
-				})
-				tween(data.label, 0.15, {
-					TextColor3 = MUTED
-				})
-				tween(data.accent, 0.15, {
-					BackgroundTransparency = 1
-				})
-			end
+			local active = tabName == name
+			tween(data.button, 0.12, {
+				BackgroundTransparency = active and 0.03 or 0.35
+			})
+			tween(data.label, 0.12, {
+				TextColor3 = active and WHITE or MUTED
+			})
+			tween(data.accent, 0.12, {
+				BackgroundTransparency = active and 0 or 1
+			})
 		end
 	end)
 
 	TabButtons[name] = {
 		button = button,
-		label = Label,
-		accent = Accent
+		label = label,
+		accent = accent
 	}
-
-	return button
 end
-
-createTabButton("Player", 2)
-createTabButton("Server", 3)
 
 local function createPage(name)
 	local page = Instance.new("ScrollingFrame")
 	page.Name = name
-	page.Position = UDim2.fromOffset(0, 20)
-	page.Size = UDim2.new(1, 0, 1, -20)
+	page.Size = UDim2.new(1, 0, 1, 0)
 	page.BackgroundTransparency = 1
 	page.BorderSizePixel = 0
 	page.ScrollBarThickness = 3
 	page.ScrollBarImageColor3 = BLUE_4
-	page.CanvasSize = UDim2.new()
 	page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	page.CanvasSize = UDim2.new()
 	page.ScrollingDirection = Enum.ScrollingDirection.Y
 	page.Visible = name == "Player"
 	page.Parent = Content
 
-	padding(page, 20, 20, 0, 20)
+	local padding = Instance.new("UIPadding")
+	padding.PaddingLeft = UDim.new(0, 20)
+	padding.PaddingRight = UDim.new(0, 20)
+	padding.PaddingTop = UDim.new(0, 18)
+	padding.PaddingBottom = UDim.new(0, 20)
+	padding.Parent = page
 
 	local layout = Instance.new("UIListLayout")
-	layout.Padding = UDim.new(0, 10)
+	layout.Padding = UDim.new(0, 9)
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
 	layout.Parent = page
 
 	TabFrames[name] = page
-
 	return page
 end
+
+createTab("Player", 2)
+createTab("Server", 3)
 
 local PlayerPage = createPage("Player")
 local ServerPage = createPage("Server")
@@ -435,172 +301,163 @@ local ServerPage = createPage("Server")
 local function showNotice(text, success)
 	local notice = Instance.new("Frame")
 	notice.AnchorPoint = Vector2.new(1, 0)
-	notice.Position = UDim2.new(1, -18, 0, 72)
-	notice.Size = UDim2.fromOffset(290, 50)
+	notice.Position = UDim2.new(1, 18, 0, 72)
+	notice.Size = UDim2.fromOffset(300, 52)
 	notice.BackgroundColor3 = success and Color3.fromRGB(10, 67, 59) or Color3.fromRGB(67, 29, 39)
 	notice.BorderSizePixel = 0
-	notice.ZIndex = 100
+	notice.ZIndex = 200
 	notice.Parent = Main
-	corner(notice, 9)
-	stroke(notice, success and GREEN or RED, 0.55, 1)
+	addCorner(notice, 9)
+	addStroke(notice, success and GREEN or RED, 0.55, 1)
 
-	local label = makeText(notice, text, 12, Enum.Font.GothamSemibold, WHITE)
-	label.Position = UDim2.fromOffset(14, 0)
-	label.Size = UDim2.new(1, -28, 1, 0)
+	local label = addText(notice, text, 11, Enum.Font.GothamSemibold, WHITE)
+	label.Position = UDim2.fromOffset(13, 0)
+	label.Size = UDim2.new(1, -26, 1, 0)
 	label.TextWrapped = true
-	label.ZIndex = 101
+	label.ZIndex = 201
 
-	notice.Position = UDim2.new(1, 20, 0, 72)
-	tween(notice, 0.22, {
-		Position = UDim2.new(1, -18, 0, 72)
-	})
+	tween(notice, 0.2, {Position = UDim2.new(1, -15, 0, 72)})
 
-	task.delay(2.3, function()
+	task.delay(2.1, function()
 		if notice.Parent then
-			tween(notice, 0.2, {
-				Position = UDim2.new(1, 20, 0, 72)
-			})
-			task.wait(0.25)
+			tween(notice, 0.18, {Position = UDim2.new(1, 18, 0, 72)})
+			task.wait(0.2)
 			notice:Destroy()
 		end
 	end)
 end
 
-local function createSectionTitle(parent, text, order)
-	local holder = Instance.new("Frame")
-	holder.LayoutOrder = order
-	holder.Size = UDim2.new(1, 0, 0, 40)
-	holder.BackgroundTransparency = 1
-	holder.Parent = parent
+local function createSection(parent, title, order)
+	local f = Instance.new("Frame")
+	f.LayoutOrder = order
+	f.Size = UDim2.new(1, 0, 0, 36)
+	f.BackgroundTransparency = 1
+	f.Parent = parent
 
-	local title = makeText(holder, text, 18, Enum.Font.GothamBold, WHITE)
-	title.Position = UDim2.fromOffset(2, 0)
-	title.Size = UDim2.new(1, 0, 0, 25)
+	local t = addText(f, title, 18, Enum.Font.GothamBold, WHITE)
+	t.Size = UDim2.new(1, 0, 0, 24)
 
 	local line = Instance.new("Frame")
-	line.Position = UDim2.fromOffset(2, 31)
-	line.Size = UDim2.new(1, -4, 0, 1)
+	line.Position = UDim2.new(0, 0, 1, -3)
+	line.Size = UDim2.new(1, 0, 0, 1)
 	line.BackgroundColor3 = BLUE_3
 	line.BorderSizePixel = 0
-	line.Parent = holder
-
-	return holder
+	line.Parent = f
 end
 
-local function createToggle(parent, titleText, descriptionText, defaultValue, callback, order)
-	local holder = Instance.new("Frame")
-	holder.LayoutOrder = order
-	holder.Size = UDim2.new(1, 0, 0, 72)
-	holder.BackgroundColor3 = Color3.fromRGB(8, 29, 58)
-	holder.BackgroundTransparency = 0.22
-	holder.BorderSizePixel = 0
-	holder.Parent = parent
-	corner(holder, 9)
-	stroke(holder, Color3.fromRGB(31, 84, 140), 0.65, 1)
+local function createToggle(parent, title, description, defaultValue, callback, order)
+	local row = Instance.new("Frame")
+	row.LayoutOrder = order
+	row.Size = UDim2.new(1, 0, 0, 70)
+	row.BackgroundColor3 = Color3.fromRGB(8, 29, 58)
+	row.BackgroundTransparency = 0.2
+	row.BorderSizePixel = 0
+	row.Parent = parent
+	addCorner(row, 9)
+	addStroke(row, Color3.fromRGB(31, 84, 140), 0.68, 1)
 
-	local title = makeText(holder, titleText, 13, Enum.Font.GothamSemibold, WHITE)
-	title.Position = UDim2.fromOffset(14, 9)
-	title.Size = UDim2.new(1, -90, 0, 20)
+	local titleLabel = addText(row, title, 13, Enum.Font.GothamSemibold, WHITE)
+	titleLabel.Position = UDim2.fromOffset(14, 8)
+	titleLabel.Size = UDim2.new(1, -95, 0, 20)
 
-	local desc = makeText(holder, descriptionText, 10, Enum.Font.Gotham, MUTED)
-	desc.Position = UDim2.fromOffset(14, 32)
-	desc.Size = UDim2.new(1, -105, 0, 30)
-	desc.TextWrapped = true
-	desc.TextYAlignment = Enum.TextYAlignment.Top
+	local descLabel = addText(row, description, 10, Enum.Font.Gotham, MUTED)
+	descLabel.Position = UDim2.fromOffset(14, 31)
+	descLabel.Size = UDim2.new(1, -108, 0, 27)
+	descLabel.TextWrapped = true
+	descLabel.TextYAlignment = Enum.TextYAlignment.Top
 
 	local track = Instance.new("TextButton")
 	track.AnchorPoint = Vector2.new(1, 0.5)
-	track.Position = UDim2.new(1, -15, 0.5, 0)
-	track.Size = UDim2.fromOffset(49, 26)
+	track.Position = UDim2.new(1, -14, 0.5, 0)
+	track.Size = UDim2.fromOffset(48, 26)
 	track.BackgroundColor3 = Color3.fromRGB(29, 49, 77)
 	track.BorderSizePixel = 0
 	track.Text = ""
 	track.AutoButtonColor = false
-	track.Parent = holder
-	corner(track, 20)
+	track.Parent = row
+	addCorner(track, 20)
 
 	local knob = Instance.new("Frame")
 	knob.AnchorPoint = Vector2.new(0.5, 0.5)
 	knob.Position = UDim2.new(0, 13, 0.5, 0)
-	knob.Size = UDim2.fromOffset(19, 19)
+	knob.Size = UDim2.fromOffset(18, 18)
 	knob.BackgroundColor3 = Color3.fromRGB(180, 200, 220)
 	knob.BorderSizePixel = 0
 	knob.Parent = track
-	corner(knob, 20)
+	addCorner(knob, 20)
 
 	local state = defaultValue == true
+	local busy = false
 
-	local function setState(value)
+	local function setState(value, notify)
+		if busy then return end
+		busy = true
 		state = value == true
 
 		if state then
-			tween(track, 0.18, {
-				BackgroundColor3 = BLUE_4
-			})
-			tween(knob, 0.18, {
+			tween(track, 0.16, {BackgroundColor3 = BLUE_4})
+			tween(knob, 0.16, {
 				Position = UDim2.new(1, -13, 0.5, 0),
 				BackgroundColor3 = WHITE
 			})
 		else
-			tween(track, 0.18, {
-				BackgroundColor3 = Color3.fromRGB(29, 49, 77)
-			})
-			tween(knob, 0.18, {
+			tween(track, 0.16, {BackgroundColor3 = Color3.fromRGB(29, 49, 77)})
+			tween(knob, 0.16, {
 				Position = UDim2.new(0, 13, 0.5, 0),
 				BackgroundColor3 = Color3.fromRGB(180, 200, 220)
 			})
 		end
 
-		if callback then
+		if callback and notify ~= false then
 			callback(state)
 		end
+
+		task.delay(0.05, function()
+			busy = false
+		end)
 	end
 
 	track.Activated:Connect(function()
 		setState(not state)
 	end)
 
-	holder.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			setState(not state)
-		end
-	end)
-
-	setState(state)
+	setState(state, false)
 
 	return {
-		Set = setState,
+		Set = function(value)
+			setState(value)
+		end,
 		Get = function()
 			return state
 		end
 	}
 end
 
-local function createButton(parent, titleText, descriptionText, callback, order)
-	local holder = Instance.new("Frame")
-	holder.LayoutOrder = order
-	holder.Size = UDim2.new(1, 0, 0, 72)
-	holder.BackgroundColor3 = Color3.fromRGB(8, 29, 58)
-	holder.BackgroundTransparency = 0.22
-	holder.BorderSizePixel = 0
-	holder.Parent = parent
-	corner(holder, 9)
-	stroke(holder, Color3.fromRGB(31, 84, 140), 0.65, 1)
+local function createButton(parent, title, description, callback, order)
+	local row = Instance.new("Frame")
+	row.LayoutOrder = order
+	row.Size = UDim2.new(1, 0, 0, 70)
+	row.BackgroundColor3 = Color3.fromRGB(8, 29, 58)
+	row.BackgroundTransparency = 0.2
+	row.BorderSizePixel = 0
+	row.Parent = parent
+	addCorner(row, 9)
+	addStroke(row, Color3.fromRGB(31, 84, 140), 0.68, 1)
 
-	local title = makeText(holder, titleText, 13, Enum.Font.GothamSemibold, WHITE)
-	title.Position = UDim2.fromOffset(14, 9)
-	title.Size = UDim2.new(1, -140, 0, 20)
+	local titleLabel = addText(row, title, 13, Enum.Font.GothamSemibold, WHITE)
+	titleLabel.Position = UDim2.fromOffset(14, 8)
+	titleLabel.Size = UDim2.new(1, -140, 0, 20)
 
-	local desc = makeText(holder, descriptionText, 10, Enum.Font.Gotham, MUTED)
-	desc.Position = UDim2.fromOffset(14, 32)
-	desc.Size = UDim2.new(1, -140, 0, 30)
-	desc.TextWrapped = true
-	desc.TextYAlignment = Enum.TextYAlignment.Top
+	local descLabel = addText(row, description, 10, Enum.Font.Gotham, MUTED)
+	descLabel.Position = UDim2.fromOffset(14, 31)
+	descLabel.Size = UDim2.new(1, -138, 0, 27)
+	descLabel.TextWrapped = true
+	descLabel.TextYAlignment = Enum.TextYAlignment.Top
 
 	local button = Instance.new("TextButton")
 	button.AnchorPoint = Vector2.new(1, 0.5)
 	button.Position = UDim2.new(1, -14, 0.5, 0)
-	button.Size = UDim2.fromOffset(100, 34)
+	button.Size = UDim2.fromOffset(104, 34)
 	button.BackgroundColor3 = BLUE_3
 	button.BorderSizePixel = 0
 	button.Text = "THỰC HIỆN"
@@ -608,78 +465,70 @@ local function createButton(parent, titleText, descriptionText, callback, order)
 	button.Font = Enum.Font.GothamBold
 	button.TextColor3 = WHITE
 	button.AutoButtonColor = false
-	button.Parent = holder
-	corner(button, 7)
+	button.Parent = row
+	addCorner(button, 7)
 
 	button.MouseEnter:Connect(function()
-		tween(button, 0.15, {
-			BackgroundColor3 = BLUE_4
-		})
+		tween(button, 0.12, {BackgroundColor3 = BLUE_4})
 	end)
 
 	button.MouseLeave:Connect(function()
-		tween(button, 0.15, {
-			BackgroundColor3 = BLUE_3
-		})
+		tween(button, 0.12, {BackgroundColor3 = BLUE_3})
 	end)
 
 	button.Activated:Connect(function()
-		tween(button, 0.08, {
-			Size = UDim2.fromOffset(94, 31)
-		})
-		task.delay(0.08, function()
-			tween(button, 0.1, {
-				Size = UDim2.fromOffset(100, 34)
-			})
+		tween(button, 0.07, {Size = UDim2.fromOffset(98, 31)})
+		task.delay(0.07, function()
+			if button.Parent then
+				tween(button, 0.1, {Size = UDim2.fromOffset(104, 34)})
+			end
 		end)
 
 		if callback then
 			callback()
 		end
 	end)
-
-	return holder
 end
 
-local function createSlider(parent, titleText, descriptionText, minValue, maxValue, defaultValue, callback, order)
-	local holder = Instance.new("Frame")
-	holder.LayoutOrder = order
-	holder.Size = UDim2.new(1, 0, 0, 92)
-	holder.BackgroundColor3 = Color3.fromRGB(8, 29, 58)
-	holder.BackgroundTransparency = 0.22
-	holder.BorderSizePixel = 0
-	holder.Parent = parent
-	corner(holder, 9)
-	stroke(holder, Color3.fromRGB(31, 84, 140), 0.65, 1)
+local function createSlider(parent, title, description, minValue, maxValue, defaultValue, callback, order)
+	local row = Instance.new("Frame")
+	row.LayoutOrder = order
+	row.Size = UDim2.new(1, 0, 0, 91)
+	row.BackgroundColor3 = Color3.fromRGB(8, 29, 58)
+	row.BackgroundTransparency = 0.2
+	row.BorderSizePixel = 0
+	row.Parent = parent
+	addCorner(row, 9)
+	addStroke(row, Color3.fromRGB(31, 84, 140), 0.68, 1)
 
-	local title = makeText(holder, titleText, 13, Enum.Font.GothamSemibold, WHITE)
-	title.Position = UDim2.fromOffset(14, 9)
-	title.Size = UDim2.new(1, -105, 0, 20)
+	local titleLabel = addText(row, title, 13, Enum.Font.GothamSemibold, WHITE)
+	titleLabel.Position = UDim2.fromOffset(14, 8)
+	titleLabel.Size = UDim2.new(1, -110, 0, 20)
 
-	local valueLabel = makeText(holder, tostring(defaultValue), 12, Enum.Font.GothamBold, BLUE_5)
-	valueLabel.Position = UDim2.new(1, -75, 0, 9)
+	local valueLabel = addText(row, tostring(defaultValue), 12, Enum.Font.GothamBold, BLUE_5)
+	valueLabel.Position = UDim2.new(1, -75, 0, 8)
 	valueLabel.Size = UDim2.fromOffset(60, 20)
 	valueLabel.TextXAlignment = Enum.TextXAlignment.Right
 
-	local desc = makeText(holder, descriptionText, 10, Enum.Font.Gotham, MUTED)
-	desc.Position = UDim2.fromOffset(14, 31)
-	desc.Size = UDim2.new(1, -28, 0, 22)
-	desc.TextWrapped = true
+	local descLabel = addText(row, description, 10, Enum.Font.Gotham, MUTED)
+	descLabel.Position = UDim2.fromOffset(14, 31)
+	descLabel.Size = UDim2.new(1, -28, 0, 21)
+	descLabel.TextWrapped = true
 
-	local sliderBackground = Instance.new("Frame")
-	sliderBackground.Position = UDim2.new(0, 14, 1, -25)
-	sliderBackground.Size = UDim2.new(1, -28, 0, 7)
-	sliderBackground.BackgroundColor3 = Color3.fromRGB(26, 48, 78)
-	sliderBackground.BorderSizePixel = 0
-	sliderBackground.Parent = holder
-	corner(sliderBackground, 10)
+	local bar = Instance.new("Frame")
+	bar.Position = UDim2.new(0, 14, 1, -24)
+	bar.Size = UDim2.new(1, -28, 0, 7)
+	bar.BackgroundColor3 = Color3.fromRGB(26, 48, 78)
+	bar.BorderSizePixel = 0
+	bar.Parent = row
+	addCorner(bar, 10)
 
 	local fill = Instance.new("Frame")
 	fill.Size = UDim2.new(0, 0, 1, 0)
 	fill.BackgroundColor3 = BLUE_5
 	fill.BorderSizePixel = 0
-	fill.Parent = sliderBackground
-	corner(fill, 10)
+	fill.Parent = bar
+	addCorner(fill, 10)
 
 	local knob = Instance.new("Frame")
 	knob.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -688,17 +537,16 @@ local function createSlider(parent, titleText, descriptionText, minValue, maxVal
 	knob.BackgroundColor3 = WHITE
 	knob.BorderSizePixel = 0
 	knob.ZIndex = 3
-	knob.Parent = sliderBackground
-	corner(knob, 10)
+	knob.Parent = bar
+	addCorner(knob, 10)
 
 	local dragging = false
 	local currentValue = defaultValue
 
-	local function apply(inputX)
-		local startX = sliderBackground.AbsolutePosition.X
-		local width = sliderBackground.AbsoluteSize.X
-		local alpha = math.clamp((inputX - startX) / width, 0, 1)
-
+	local function apply(x)
+		local startX = bar.AbsolutePosition.X
+		local width = bar.AbsoluteSize.X
+		local alpha = math.clamp((x - startX) / width, 0, 1)
 		currentValue = math.floor(minValue + (maxValue - minValue) * alpha + 0.5)
 
 		fill.Size = UDim2.new(alpha, 0, 1, 0)
@@ -710,16 +558,11 @@ local function createSlider(parent, titleText, descriptionText, minValue, maxVal
 		end
 	end
 
-	local initialAlpha = math.clamp(
-		(defaultValue - minValue) / (maxValue - minValue),
-		0,
-		1
-	)
-
+	local initialAlpha = math.clamp((defaultValue - minValue) / (maxValue - minValue), 0, 1)
 	fill.Size = UDim2.new(initialAlpha, 0, 1, 0)
 	knob.Position = UDim2.new(initialAlpha, 0, 0.5, 0)
 
-	sliderBackground.InputBegan:Connect(function(input)
+	bar.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
 			dragging = true
 			apply(input.Position.X)
@@ -742,12 +585,10 @@ local function createSlider(parent, titleText, descriptionText, minValue, maxVal
 		Set = function(value)
 			local v = math.clamp(value, minValue, maxValue)
 			local alpha = (v - minValue) / (maxValue - minValue)
-
 			currentValue = v
 			fill.Size = UDim2.new(alpha, 0, 1, 0)
 			knob.Position = UDim2.new(alpha, 0, 0.5, 0)
 			valueLabel.Text = tostring(v)
-
 			if callback then
 				callback(v)
 			end
@@ -758,10 +599,10 @@ local function createSlider(parent, titleText, descriptionText, minValue, maxVal
 	}
 end
 
-local playerTitle = createSectionTitle(PlayerPage, "Player", 1)
+createSection(PlayerPage, "Player", 1)
 
 local State = {
-	flying = false,
+	fly = false,
 	airWalk = false,
 	speed = false,
 	jump = false,
@@ -772,7 +613,7 @@ local State = {
 	esp = false,
 	flySpeed = 60,
 	walkSpeed = 40,
-	jumpPower = 50,
+	jumpPower = 80,
 	spinSpeed = 15
 }
 
@@ -781,24 +622,26 @@ local humanoid
 local root
 
 local function refreshCharacter()
-	character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-	humanoid = character:FindFirstChildOfClass("Humanoid")
-	root = character:FindFirstChild("HumanoidRootPart")
+	character = LocalPlayer.Character
+	humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	root = character and character:FindFirstChild("HumanoidRootPart")
 end
 
 refreshCharacter()
 
-LocalPlayer.CharacterAdded:Connect(function()
-	task.wait(0.3)
-	refreshCharacter()
+localPlayerCharacterConnection = LocalPlayer.CharacterAdded:Connect(function(char)
+	character = char
+	humanoid = char:WaitForChild("Humanoid", 5)
+	root = char:WaitForChild("HumanoidRootPart", 5)
 end)
 
 local flyVelocity
 local flyOrientation
+local flyAttachment
 local flyConnection
 
 local function stopFly()
-	State.flying = false
+	State.fly = false
 
 	if flyConnection then
 		flyConnection:Disconnect()
@@ -815,6 +658,11 @@ local function stopFly()
 		flyOrientation = nil
 	end
 
+	if flyAttachment then
+		flyAttachment:Destroy()
+		flyAttachment = nil
+	end
+
 	if humanoid then
 		humanoid.PlatformStand = false
 	end
@@ -822,8 +670,8 @@ end
 
 local function startFly()
 	if not DEV_ACCESS then
-		showNotice("Chức năng này chỉ dùng trong experience của bạn.", false)
-		State.flying = false
+		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
+		State.fly = false
 		return
 	end
 
@@ -833,61 +681,51 @@ local function startFly()
 		return
 	end
 
+	flyAttachment = Instance.new("Attachment")
+	flyAttachment.Name = "_ThoFlyAttachment"
+	flyAttachment.Parent = root
+
 	flyVelocity = Instance.new("LinearVelocity")
+	flyVelocity.Attachment0 = flyAttachment
 	flyVelocity.RelativeTo = Enum.ActuatorRelativeTo.World
 	flyVelocity.MaxForce = math.huge
 	flyVelocity.VectorVelocity = Vector3.zero
-
-	local attachment = Instance.new("Attachment")
-	attachment.Name = "_ThoFlyAttachment"
-	attachment.Parent = root
-
-	flyVelocity.Attachment0 = attachment
 	flyVelocity.Parent = root
 
 	flyOrientation = Instance.new("AlignOrientation")
+	flyOrientation.Attachment0 = flyAttachment
 	flyOrientation.Mode = Enum.OrientationAlignmentMode.OneAttachment
 	flyOrientation.MaxTorque = math.huge
-	flyOrientation.Responsiveness = 35
-	flyOrientation.Attachment0 = attachment
+	flyOrientation.Responsiveness = 30
 	flyOrientation.Parent = root
 
 	humanoid.PlatformStand = true
 
 	flyConnection = RunService.RenderStepped:Connect(function()
-		if not State.flying or not character or not character.Parent or not root then
+		if not State.fly or not root or not root.Parent then
 			return
 		end
 
 		local camera = workspace.CurrentCamera
 		local move = Vector3.zero
 
-		local forward = camera.CFrame.LookVector
-		local right = camera.CFrame.RightVector
-		local up = Vector3.new(0, 1, 0)
-
 		if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-			move += forward
+			move += camera.CFrame.LookVector
 		end
-
 		if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-			move -= forward
+			move -= camera.CFrame.LookVector
 		end
-
 		if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-			move += right
+			move += camera.CFrame.RightVector
 		end
-
 		if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-			move -= right
+			move -= camera.CFrame.RightVector
 		end
-
 		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-			move += up
+			move += Vector3.yAxis
 		end
-
 		if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
-			move -= up
+			move -= Vector3.yAxis
 		end
 
 		if move.Magnitude > 0 then
@@ -899,33 +737,18 @@ local function startFly()
 	end)
 end
 
-local flyToggle = createToggle(
-	PlayerPage,
-	"Bay",
-	"Cho phép nhân vật bay tự do với tốc độ có thể tùy chỉnh.",
-	false,
-	function(value)
-		if value then
-			startFly()
-		else
-			stopFly()
-		end
-	end,
-	2
-)
+createToggle(PlayerPage, "Bay", "Bật chế độ bay và thay đổi tốc độ bằng thanh trượt.", false, function(value)
+	State.fly = value
+	if value then
+		startFly()
+	else
+		stopFly()
+	end
+end, 2)
 
-createSlider(
-	PlayerPage,
-	"Tốc độ bay",
-	"Kéo thanh trượt để thay đổi tốc độ bay tối đa 200.",
-	10,
-	200,
-	State.flySpeed,
-	function(value)
-		State.flySpeed = value
-	end,
-	3
-)
+createSlider(PlayerPage, "Tốc độ bay", "Kéo để chỉnh tốc độ bay, tối đa 200.", 10, 200, State.flySpeed, function(value)
+	State.flySpeed = value
+end, 3)
 
 local airPlatform
 local airConnection
@@ -946,148 +769,89 @@ end
 
 local function startAirWalk()
 	if not DEV_ACCESS then
-		showNotice("Chức năng này chỉ dùng trong experience của bạn.", false)
+		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
 		State.airWalk = false
 		return
 	end
 
 	refreshCharacter()
-
-	if not root then
-		return
-	end
+	if not root then return end
 
 	airPlatform = Instance.new("Part")
 	airPlatform.Name = "_ThoAirWalk"
-	airPlatform.Size = Vector3.new(4.5, 0.35, 4.5)
+	airPlatform.Size = Vector3.new(4.5, 0.3, 4.5)
 	airPlatform.Transparency = 1
 	airPlatform.CanCollide = true
 	airPlatform.Anchored = true
-	airPlatform.CanQuery = false
-	airPlatform.CanTouch = false
 	airPlatform.Parent = workspace
 
 	airConnection = RunService.Heartbeat:Connect(function()
-		if not State.airWalk or not root or not root.Parent or not airPlatform then
-			return
+		if State.airWalk and root and root.Parent and airPlatform then
+			airPlatform.CFrame = CFrame.new(root.Position - Vector3.new(0, 3.05, 0))
 		end
-
-		local position = root.Position - Vector3.new(0, 3.05, 0)
-		airPlatform.CFrame = CFrame.new(position)
 	end)
 end
 
-createToggle(
-	PlayerPage,
-	"Đi trên không",
-	"Tạo điểm đỡ ổn định ngay dưới nhân vật để có thể đứng trên không.",
-	false,
-	function(value)
-		State.airWalk = value
-
-		if value then
-			startAirWalk()
-		else
-			stopAirWalk()
-		end
-	end,
-	4
-)
-
-local normalWalkSpeed = 16
+createToggle(PlayerPage, "Đi trên không", "Giữ một bề mặt đỡ ngay dưới nhân vật trong experience của bạn.", false, function(value)
+	State.airWalk = value
+	if value then
+		startAirWalk()
+	else
+		stopAirWalk()
+	end
+end, 4)
 
 local function applyWalkSpeed()
 	refreshCharacter()
-
 	if humanoid then
-		humanoid.WalkSpeed = State.speed and State.walkSpeed or normalWalkSpeed
+		humanoid.WalkSpeed = State.speed and State.walkSpeed or 16
 	end
 end
 
-createToggle(
-	PlayerPage,
-	"Chạy nhanh",
-	"Điều chỉnh tốc độ di chuyển của nhân vật.",
-	false,
-	function(value)
-		State.speed = value
+createToggle(PlayerPage, "Chạy nhanh", "Thay đổi tốc độ di chuyển của Humanoid.", false, function(value)
+	State.speed = value
+	if not DEV_ACCESS then
+		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
+		return
+	end
+	applyWalkSpeed()
+end, 5)
 
-		if not DEV_ACCESS then
-			showNotice("Chức năng này chỉ dùng trong experience của bạn.", false)
-			return
-		end
-
+createSlider(PlayerPage, "Tốc độ chạy", "Kéo để chỉnh từ 16 đến 200.", 16, 200, State.walkSpeed, function(value)
+	State.walkSpeed = value
+	if State.speed then
 		applyWalkSpeed()
-	end,
-	5
-)
+	end
+end, 6)
 
-createSlider(
-	PlayerPage,
-	"Tốc độ chạy",
-	"Giới hạn điều chỉnh từ 16 đến 200.",
-	16,
-	200,
-	State.walkSpeed,
-	function(value)
-		State.walkSpeed = value
-		if State.speed then
-			applyWalkSpeed()
-		end
-	end,
-	6
-)
-
-local normalJumpPower = 50
-
-local function applyJump()
+local function applyJumpPower()
 	refreshCharacter()
-
 	if humanoid then
 		humanoid.UseJumpPower = true
-		humanoid.JumpPower = State.jump and State.jumpPower or normalJumpPower
+		humanoid.JumpPower = State.jump and State.jumpPower or 50
 	end
 end
 
-createToggle(
-	PlayerPage,
-	"Nhảy cao",
-	"Tăng lực nhảy của nhân vật theo giá trị đã chọn.",
-	false,
-	function(value)
-		State.jump = value
+createToggle(PlayerPage, "Nhảy cao", "Tăng JumpPower của nhân vật.", false, function(value)
+	State.jump = value
+	if not DEV_ACCESS then
+		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
+		return
+	end
+	applyJumpPower()
+end, 7)
 
-		if not DEV_ACCESS then
-			showNotice("Chức năng này chỉ dùng trong experience của bạn.", false)
-			return
-		end
-
-		applyJump()
-	end,
-	7
-)
-
-createSlider(
-	PlayerPage,
-	"Độ cao nhảy",
-	"Điều chỉnh JumpPower tối đa 200.",
-	50,
-	200,
-	State.jumpPower,
-	function(value)
-		State.jumpPower = value
-		if State.jump then
-			applyJump()
-		end
-	end,
-	8
-)
+createSlider(PlayerPage, "Độ cao nhảy", "Kéo để chỉnh JumpPower tối đa 200.", 50, 200, State.jumpPower, function(value)
+	State.jumpPower = value
+	if State.jump then
+		applyJumpPower()
+	end
+end, 8)
 
 local noclipConnection
 
 local function stopNoclip()
 	State.noclip = false
-
 	if noclipConnection then
 		noclipConnection:Disconnect()
 		noclipConnection = nil
@@ -1104,16 +868,13 @@ end
 
 local function startNoclip()
 	if not DEV_ACCESS then
-		showNotice("Chức năng này chỉ dùng trong experience của bạn.", false)
+		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
 		State.noclip = false
 		return
 	end
 
 	noclipConnection = RunService.Stepped:Connect(function()
-		if not State.noclip or not character then
-			return
-		end
-
+		if not State.noclip or not character then return end
 		for _, object in ipairs(character:GetDescendants()) do
 			if object:IsA("BasePart") then
 				object.CanCollide = false
@@ -1122,35 +883,24 @@ local function startNoclip()
 	end)
 end
 
-createToggle(
-	PlayerPage,
-	"Đi xuyên tường",
-	"Tắt va chạm các bộ phận nhân vật để kiểm tra map và collision trong experience.",
-	false,
-	function(value)
-		State.noclip = value
-
-		if value then
-			startNoclip()
-		else
-			stopNoclip()
-		end
-	end,
-	9
-)
+createToggle(PlayerPage, "Đi xuyên tường", "Tắt collision của các bộ phận nhân vật để kiểm tra map.", false, function(value)
+	State.noclip = value
+	if value then
+		startNoclip()
+	else
+		stopNoclip()
+	end
+end, 9)
 
 local lyingConnection
 
 local function stopLying()
 	State.lying = false
-
 	if lyingConnection then
 		lyingConnection:Disconnect()
 		lyingConnection = nil
 	end
-
 	refreshCharacter()
-
 	if humanoid then
 		humanoid.AutoRotate = true
 	end
@@ -1158,90 +908,51 @@ end
 
 local function startLying()
 	if not DEV_ACCESS then
-		showNotice("Chức năng này chỉ dùng trong experience của bạn.", false)
+		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
 		State.lying = false
 		return
 	end
 
 	refreshCharacter()
-
-	if not humanoid or not root then
-		return
-	end
+	if not humanoid or not root then return end
 
 	humanoid.AutoRotate = false
-
 	lyingConnection = RunService.RenderStepped:Connect(function()
-		if not State.lying or not root or not root.Parent then
-			return
+		if State.lying and root and root.Parent then
+			local p = root.Position
+			local look = root.CFrame.LookVector
+			root.CFrame = CFrame.lookAt(p, p + look) * CFrame.Angles(0, 0, math.rad(90))
 		end
-
-		local position = root.Position
-		local look = root.CFrame.LookVector
-
-		root.CFrame = CFrame.lookAt(position, position + look) * CFrame.Angles(0, 0, math.rad(90))
 	end)
 end
 
-createToggle(
-	PlayerPage,
-	"Nằm",
-	"Tạo tư thế nằm ngang cho nhân vật trong experience của bạn.",
-	false,
-	function(value)
-		State.lying = value
+createToggle(PlayerPage, "Nằm", "Đưa nhân vật về tư thế nằm trong experience của bạn.", false, function(value)
+	State.lying = value
+	if value then
+		startLying()
+	else
+		stopLying()
+	end
+end, 10)
 
-		if value then
-			startLying()
-		else
-			stopLying()
-		end
-	end,
-	10
-)
+createToggle(PlayerPage, "Ngồi", "Đưa Humanoid vào trạng thái ngồi chuẩn.", false, function(value)
+	State.sitting = value
 
-local function sitCharacter()
 	if not DEV_ACCESS then
-		showNotice("Chức năng này chỉ dùng trong experience của bạn.", false)
+		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
 		return
 	end
 
 	refreshCharacter()
-
 	if humanoid then
-		humanoid.Sit = true
+		humanoid.Sit = value
 	end
-end
-
-local sitToggle
-
-sitToggle = createToggle(
-	PlayerPage,
-	"Ngồi",
-	"Đưa nhân vật vào trạng thái ngồi chuẩn của Humanoid.",
-	false,
-	function(value)
-		State.sitting = value
-
-		if not DEV_ACCESS then
-			showNotice("Chức năng này chỉ dùng trong experience của bạn.", false)
-			return
-		end
-
-		refreshCharacter()
-
-		if humanoid then
-			humanoid.Sit = value
-		end
-	end,
-	11
-)
+end, 11)
 
 local spinConnection
 
 local function stopSpin()
 	State.spin = false
-
 	if spinConnection then
 		spinConnection:Disconnect()
 		spinConnection = nil
@@ -1250,131 +961,85 @@ end
 
 local function startSpin()
 	if not DEV_ACCESS then
-		showNotice("Chức năng này chỉ dùng trong experience của bạn.", false)
+		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
 		State.spin = false
 		return
 	end
 
 	spinConnection = RunService.RenderStepped:Connect(function(delta)
-		if not State.spin then
-			return
-		end
-
-		refreshCharacter()
-
-		if root then
-			root.CFrame =
-				root.CFrame
-				* CFrame.Angles(
-					0,
-					math.rad(State.spinSpeed * 20) * delta,
-					0
-				)
+		if State.spin then
+			refreshCharacter()
+			if root then
+				root.CFrame *= CFrame.Angles(0, math.rad(State.spinSpeed * 20) * delta, 0)
+			end
 		end
 	end)
 end
 
-createToggle(
-	PlayerPage,
-	"Xoay",
-	"Tự động xoay nhân vật liên tục theo tốc độ đã chọn.",
-	false,
-	function(value)
-		State.spin = value
+createToggle(PlayerPage, "Xoay", "Xoay nhân vật liên tục theo tốc độ đã chọn.", false, function(value)
+	State.spin = value
+	if value then
+		startSpin()
+	else
+		stopSpin()
+	end
+end, 12)
 
-		if value then
-			startSpin()
-		else
-			stopSpin()
-		end
-	end,
-	12
-)
-
-createSlider(
-	PlayerPage,
-	"Tốc độ xoay",
-	"Điều chỉnh tốc độ xoay từ 1 đến 50.",
-	1,
-	50,
-	State.spinSpeed,
-	function(value)
-		State.spinSpeed = value
-	end,
-	13
-)
+createSlider(PlayerPage, "Tốc độ xoay", "Kéo để chỉnh tốc độ từ 1 đến 50.", 1, 50, State.spinSpeed, function(value)
+	State.spinSpeed = value
+end, 13)
 
 local ESPFolder = Instance.new("Folder")
 ESPFolder.Name = "_ThoESP"
 ESPFolder.Parent = ScreenGui
 
-local ESPObjects = {}
+local ESPData = {}
+local espConnection
 
 local function destroyESP(player)
-	local data = ESPObjects[player]
+	local data = ESPData[player]
+	if not data then return end
 
-	if not data then
-		return
-	end
-
-	for _, object in pairs(data) do
-		if typeof(object) == "Instance" and object.Parent then
-			object:Destroy()
-		end
-	end
-
-	ESPObjects[player] = nil
+	if data.highlight then data.highlight:Destroy() end
+	if data.billboard then data.billboard:Destroy() end
+	ESPData[player] = nil
 end
 
-local function createESP(player)
-	if player == LocalPlayer then
-		return
-	end
-
-	if ESPObjects[player] then
-		return
-	end
+local function ensureESP(player)
+	if player == LocalPlayer or ESPData[player] then return end
 
 	local highlight = Instance.new("Highlight")
 	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 	highlight.FillColor = BLUE_5
-	highlight.FillTransparency = 0.82
+	highlight.FillTransparency = 0.84
 	highlight.OutlineColor = Color3.fromRGB(90, 205, 255)
 	highlight.OutlineTransparency = 0.05
 	highlight.Enabled = false
 	highlight.Parent = ESPFolder
 
 	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "_Info"
-	billboard.Size = UDim2.fromOffset(190, 58)
+	billboard.Size = UDim2.fromOffset(190, 54)
 	billboard.StudsOffset = Vector3.new(0, 3.4, 0)
 	billboard.AlwaysOnTop = true
 	billboard.Enabled = false
 	billboard.Parent = ESPFolder
 
-	local container = Instance.new("Frame")
-	container.Size = UDim2.fromScale(1, 1)
-	container.BackgroundTransparency = 1
-	container.Parent = billboard
-
-	local nameLabel = makeText(container, player.DisplayName, 12, Enum.Font.GothamBold, WHITE)
+	local nameLabel = addText(billboard, player.DisplayName, 12, Enum.Font.GothamBold, WHITE)
 	nameLabel.Size = UDim2.new(1, 0, 0, 22)
 	nameLabel.TextXAlignment = Enum.TextXAlignment.Center
 
-	local infoLabel = makeText(container, "HP: -- | -- studs", 10, Enum.Font.GothamMedium, MUTED)
+	local infoLabel = addText(billboard, "HP: -- | -- studs", 10, Enum.Font.GothamMedium, MUTED)
 	infoLabel.Position = UDim2.fromOffset(0, 22)
 	infoLabel.Size = UDim2.new(1, 0, 0, 20)
 	infoLabel.TextXAlignment = Enum.TextXAlignment.Center
 
-	ESPObjects[player] = {
+	ESPData[player] = {
 		highlight = highlight,
 		billboard = billboard,
 		nameLabel = nameLabel,
 		infoLabel = infoLabel
 	}
 end
-
-local espConnection
 
 local function stopESP()
 	State.esp = false
@@ -1384,19 +1049,21 @@ local function stopESP()
 		espConnection = nil
 	end
 
-	for player in pairs(ESPObjects) do
-		local data = ESPObjects[player]
-
-		if data then
-			data.highlight.Enabled = false
-			data.billboard.Enabled = false
-		end
+	for _, data in pairs(ESPData) do
+		data.highlight.Enabled = false
+		data.billboard.Enabled = false
 	end
 end
 
 local function startESP()
+	if not DEV_ACCESS then
+		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
+		State.esp = false
+		return
+	end
+
 	for _, player in ipairs(Players:GetPlayers()) do
-		createESP(player)
+		ensureESP(player)
 	end
 
 	if espConnection then
@@ -1409,22 +1076,20 @@ local function startESP()
 
 		for _, player in ipairs(Players:GetPlayers()) do
 			if player ~= LocalPlayer then
-				createESP(player)
+				ensureESP(player)
 
-				local data = ESPObjects[player]
+				local data = ESPData[player]
 				local targetCharacter = player.Character
 				local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
 				local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
 
-				if data and targetCharacter and targetRoot and targetHumanoid and localRoot then
+				if data and localRoot and targetCharacter and targetRoot and targetHumanoid then
 					data.highlight.Adornee = targetCharacter
 					data.highlight.Enabled = true
-
 					data.billboard.Adornee = targetRoot
 					data.billboard.Enabled = true
 
 					local distance = math.floor((localRoot.Position - targetRoot.Position).Magnitude)
-
 					data.nameLabel.Text = player.DisplayName
 					data.infoLabel.Text =
 						"HP: "
@@ -1445,7 +1110,7 @@ end
 
 Players.PlayerAdded:Connect(function(player)
 	if State.esp then
-		createESP(player)
+		ensureESP(player)
 	end
 end)
 
@@ -1453,220 +1118,172 @@ Players.PlayerRemoving:Connect(function(player)
 	destroyESP(player)
 end)
 
-createToggle(
-	PlayerPage,
-	"Định vị người chơi",
-	"Hiển thị khung, tên, máu và khoảng cách của người chơi khác; không hiển thị bản thân.",
-	false,
-	function(value)
-		State.esp = value
-
-		if not DEV_ACCESS then
-			showNotice("Chức năng này chỉ dùng trong experience của bạn.", false)
-			State.esp = false
-			return
-		end
-
-		if value then
-			startESP()
-		else
-			stopESP()
-		end
-	end,
-	14
-)
-
-createSectionTitle(ServerPage, "Server", 1)
-
-createButton(
-	ServerPage,
-	"Đổi máy chủ",
-	"Đi tới một instance khác của chính experience hiện tại.",
-	function()
-		if not DEV_ACCESS then
-			showNotice("Chỉ cho phép trong experience do bạn phát triển.", false)
-			return
-		end
-
-		showNotice("Server hop cần được quản lý bởi hệ thống server của experience.", false)
-	end,
-	2
-)
-
-createButton(
-	ServerPage,
-	"Đổi máy chủ ít người",
-	"Tìm instance có lượng người chơi thấp thông qua hệ thống server riêng của experience.",
-	function()
-		if not DEV_ACCESS then
-			showNotice("Chỉ cho phép trong experience do bạn phát triển.", false)
-			return
-		end
-
-		showNotice("Tính năng này cần server browser/API riêng của experience.", false)
-	end,
-	3
-)
-
-createButton(
-	ServerPage,
-	"Tham gia lại máy chủ",
-	"Yêu cầu experience đưa bạn trở lại đúng instance đang chạy.",
-	function()
-		if not DEV_ACCESS then
-			showNotice("Chỉ cho phép trong experience do bạn phát triển.", false)
-			return
-		end
-
-		local jobId = game.JobId
-
-		if jobId == "" then
-			showNotice("Studio không có JobId để rejoin.", false)
-			return
-		end
-
-		pcall(function()
-			TeleportService:TeleportToPlaceInstance(
-				game.PlaceId,
-				jobId,
-				LocalPlayer
-			)
-		end)
-	end,
-	4
-)
-
-createToggle(
-	ServerPage,
-	"Tự động chạy script",
-	"Giữ trạng thái giao diện khi hệ thống của chính experience thực hiện teleport sang instance khác.",
-	false,
-	function(value)
-		if not DEV_ACCESS then
-			showNotice("Chỉ cho phép trong experience do bạn phát triển.", false)
-			return
-		end
-
-		if value then
-			showNotice("Đã bật trạng thái tự động khôi phục giao diện.", true)
-		else
-			showNotice("Đã tắt trạng thái tự động khôi phục.", true)
-		end
-	end,
-	5
-)
-
-local originalSize = Main.Size
-local originalPosition = Main.Position
-local minimized = false
-local maximized = false
-local closed = false
-
-local function setMinimized(value)
-	minimized = value
-
+createToggle(PlayerPage, "Định vị người chơi", "Hiển thị khung, tên, máu và khoảng cách; bỏ qua chính bạn.", false, function(value)
+	State.esp = value
 	if value then
-		Sidebar.Visible = false
-		Content.Visible = false
-
-		tween(Main, 0.25, {
-			Size = UDim2.fromOffset(850, 58)
-		})
-
-		MenuSubtitle.Text = "Đã thu nhỏ"
+		startESP()
 	else
-		tween(Main, 0.25, {
-			Size = maximized and UDim2.fromOffset(1020, 650) or originalSize
-		})
-
-		task.delay(0.15, function()
-			if not minimized and Main.Parent then
-				Sidebar.Visible = true
-				Content.Visible = true
-			end
-		end)
-
-		MenuSubtitle.Text = "Personal utility interface"
+		stopESP()
 	end
-end
+end, 14)
 
-local function setMaximized(value)
-	maximized = value
+createSection(ServerPage, "Server", 1)
 
-	if value then
-		setMinimized(false)
-
-		tween(Main, 0.28, {
-			Size = UDim2.fromOffset(1020, 650)
-		})
-	else
-		tween(Main, 0.28, {
-			Size = originalSize
-		})
+createButton(ServerPage, "Đổi máy chủ", "Giao diện dành cho server browser của experience bạn.", function()
+	if not DEV_ACCESS then
+		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
+		return
 	end
-end
+	showNotice("Server hop cần hệ thống chọn instance của chính experience.", false)
+end, 2)
 
-MinimizeButton.Activated:Connect(function()
-	setMinimized(not minimized)
-end)
+createButton(ServerPage, "Đổi máy chủ ít người", "Giao diện dành cho hệ thống tìm instance ít người.", function()
+	if not DEV_ACCESS then
+		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
+		return
+	end
+	showNotice("Cần server browser/API của experience để chọn instance.", false)
+end, 3)
 
-MaximizeButton.Activated:Connect(function()
-	setMaximized(not maximized)
-end)
-
-CloseButton.Activated:Connect(function()
-	closed = true
-
-	tween(Main, 0.22, {
-		Size = UDim2.fromOffset(0, 0)
-	})
-
-	task.delay(0.25, function()
-		if Main.Parent then
-			Main.Visible = false
-		end
-	end)
-end)
-
-local function reopen()
-	if not closed then
+createButton(ServerPage, "Tham gia lại máy chủ", "Thử quay lại đúng JobId của instance hiện tại.", function()
+	if not DEV_ACCESS then
+		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
 		return
 	end
 
-	closed = false
-	Main.Visible = true
-	Main.Size = UDim2.fromOffset(0, 0)
+	local jobId = game.JobId
+	if jobId == "" then
+		showNotice("Không có JobId hợp lệ trong môi trường hiện tại.", false)
+		return
+	end
 
-	tween(Main, 0.25, {
+	local ok = pcall(function()
+		TeleportService:TeleportToPlaceInstance(game.PlaceId, jobId, LocalPlayer)
+	end)
+
+	if not ok then
+		showNotice("Không thể thực hiện teleport tới instance hiện tại.", false)
+	end
+end, 4)
+
+createToggle(ServerPage, "Tự động chạy script", "Lưu trạng thái giao diện trong phiên hiện tại.", false, function(value)
+	if not DEV_ACCESS then
+		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
+		return
+	end
+
+	showNotice(value and "Đã bật tự động khôi phục trạng thái." or "Đã tắt tự động khôi phục.", true)
+end, 5)
+
+local FloatingButton = Instance.new("TextButton")
+FloatingButton.AnchorPoint = Vector2.new(1, 1)
+FloatingButton.Position = UDim2.new(1, -24, 1, -24)
+FloatingButton.Size = UDim2.fromOffset(58, 58)
+FloatingButton.BackgroundColor3 = BLUE_4
+FloatingButton.BorderSizePixel = 0
+FloatingButton.Text = "T"
+FloatingButton.TextSize = 22
+FloatingButton.Font = Enum.Font.GothamBold
+FloatingButton.TextColor3 = WHITE
+FloatingButton.AutoButtonColor = false
+FloatingButton.Visible = true
+FloatingButton.ZIndex = 300
+FloatingButton.Parent = ScreenGui
+addCorner(FloatingButton, 100)
+addStroke(FloatingButton, BLUE_5, 0.25, 1)
+
+local FloatingGlow = Instance.new("Frame")
+FloatingGlow.AnchorPoint = Vector2.new(0.5, 0.5)
+FloatingGlow.Position = UDim2.fromScale(0.5, 0.5)
+FloatingGlow.Size = UDim2.fromScale(0.72, 0.72)
+FloatingGlow.BackgroundColor3 = BLUE_5
+FloatingGlow.BackgroundTransparency = 0.83
+FloatingGlow.BorderSizePixel = 0
+FloatingGlow.Parent = FloatingButton
+addCorner(FloatingGlow, 100)
+
+FloatingButton.MouseEnter:Connect(function()
+	tween(FloatingButton, 0.12, {
+		Size = UDim2.fromOffset(64, 64),
+		BackgroundColor3 = BLUE_5
+	})
+end)
+
+FloatingButton.MouseLeave:Connect(function()
+	tween(FloatingButton, 0.12, {
+		Size = UDim2.fromOffset(58, 58),
+		BackgroundColor3 = BLUE_4
+	})
+end)
+
+local originalSize = Main.Size
+local minimized = false
+local maximized = false
+local menuOpen = true
+
+local function setMenuVisible(value)
+	menuOpen = value
+	Main.Visible = value
+	FloatingButton.Visible = not value
+end
+
+FloatingButton.Activated:Connect(function()
+	setMenuVisible(true)
+end)
+
+MinimizeButton.Activated:Connect(function()
+	if maximized then
+		maximized = false
+	end
+
+	minimized = not minimized
+
+	if minimized then
+		Sidebar.Visible = false
+		Content.Visible = false
+		tween(Main, 0.22, {Size = UDim2.fromOffset(850, 58)})
+		MenuSubtitle.Text = "Đã thu nhỏ"
+	else
+		Sidebar.Visible = true
+		Content.Visible = true
+		tween(Main, 0.22, {Size = originalSize})
+		MenuSubtitle.Text = "Personal utility interface"
+	end
+end)
+
+MaximizeButton.Activated:Connect(function()
+	if minimized then
+		minimized = false
+		Sidebar.Visible = true
+		Content.Visible = true
+	end
+
+	maximized = not maximized
+
+	tween(Main, 0.24, {
 		Size = maximized and UDim2.fromOffset(1020, 650) or originalSize
 	})
-end
+end)
+
+CloseButton.Activated:Connect(function()
+	setMenuVisible(false)
+end)
 
 local dragging = false
 local dragStart
 local startPosition
-local dragInput
 
 Header.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		dragging = true
 		dragStart = input.Position
 		startPosition = Main.Position
-		dragInput = input
-	end
-end)
-
-Header.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		dragging = false
-		dragInput = nil
 	end
 end)
 
 UserInputService.InputChanged:Connect(function(input)
 	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
 		local delta = input.Position - dragStart
-
 		Main.Position = UDim2.new(
 			startPosition.X.Scale,
 			startPosition.X.Offset + delta.X,
@@ -1676,68 +1293,56 @@ UserInputService.InputChanged:Connect(function(input)
 	end
 end)
 
-UserInputService.InputBegan:Connect(function(input, processed)
-	if processed then
-		return
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = false
 	end
+end)
+
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed then return end
 
 	if input.KeyCode == Enum.KeyCode.RightShift then
-		if closed then
-			reopen()
+		if Main.Visible then
+			setMenuVisible(false)
 		else
-			Main.Visible = not Main.Visible
+			setMenuVisible(true)
 		end
 	end
 end)
 
-for tabName, data in pairs(TabButtons) do
-	if tabName == "Player" then
-		data.button.BackgroundTransparency = 0.03
-		data.label.TextColor3 = WHITE
-		data.accent.BackgroundTransparency = 0
-	end
-end
+LocalPlayer.CharacterAdded:Connect(function(char)
+	task.wait(0.15)
 
-humanoid and humanoid.Died:Connect(function()
-	stopFly()
-	stopAirWalk()
-	stopNoclip()
-	stopLying()
-	stopSpin()
+	character = char
+	humanoid = char:FindFirstChildOfClass("Humanoid")
+	root = char:FindFirstChild("HumanoidRootPart")
+
+	if State.fly then
+		stopFly()
+		startFly()
+	end
 
 	if State.esp then
-		task.defer(function()
-			if State.esp then
-				startESP()
-			end
-		end)
+		task.defer(startESP)
 	end
 end)
 
 task.spawn(function()
-	while Main.Parent do
-		if State.sitting then
-			refreshCharacter()
-
-			if humanoid and humanoid.Health > 0 then
-				humanoid.Sit = true
-			end
+	while ScreenGui.Parent do
+		if State.sitting and humanoid and humanoid.Health > 0 then
+			humanoid.Sit = true
 		end
 
-		task.wait(0.25)
-	end
-end)
-
-task.spawn(function()
-	while Main.Parent do
-		if State.speed then
-			applyWalkSpeed()
+		if State.speed and humanoid then
+			humanoid.WalkSpeed = State.walkSpeed
 		end
 
-		if State.jump then
-			applyJump()
+		if State.jump and humanoid then
+			humanoid.UseJumpPower = true
+			humanoid.JumpPower = State.jumpPower
 		end
 
-		task.wait(0.4)
+		task.wait(0.3)
 	end
 end)
