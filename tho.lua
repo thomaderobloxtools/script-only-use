@@ -7,7 +7,7 @@
 -- - Spin bỏ pause, max 100
 -- - Slider max fly 500, walk 500, jump 500
 local SCRIPT_BUILD = "2026-09-13-#9"
-local AUTORUN_URL = "https://raw.githubusercontent.com/thomaderobloxtools/script-only-use/main/tho.lua"
+local AUTORUN_URL = "https://raw.githubusercontent.com/thomaderobloxtools/script-only-use/refs/heads/main/tho.lua"
 
 repeat task.wait() until game:IsLoaded()
 
