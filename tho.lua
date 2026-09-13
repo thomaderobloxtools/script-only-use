@@ -1,14 +1,10 @@
--- [ThoScript] BUILD: 2026-09-13 #10
--- - Fly: tắt hết HumanoidState + CFrame + Animate.Disabled (theo Fly V3)
--- - Nằm: Space thoát hẳn lying
--- - Menu: bỏ AnchorPoint, dùng top-left, không tự nhảy
--- - Slider: thêm Touch, hitbox cao 40px
--- - AntiLag: không xóa originals khi stop, fix không tắt được
--- - Đi trên không: platform dày 1, không bay lên
--- - Slider max: fly 1000, walk 1000, jump 1000, spin 200
--- - Tab Visual: Giảm lag, Màn hình trắng, Màn hình đen
--- - Server: Lấy PlaceID, Lấy JobID + script teleport (có nút Copy)
-local SCRIPT_BUILD = "2026-09-13-#10"
+-- [ThoScript] BUILD: 2026-09-13 #11
+-- - Fix fly: thêm BodyVelocity counter gravity, không giật khi đứng im
+-- - Fix đi trên không: platform sát chân hơn, dày hơn
+-- - Thêm "Dịch chuyển ảo thuật" (Player): camera tách, nút tròn teleport
+-- - Thêm "Xem từ xa" (Visual): free camera
+-- - Thêm pose "Vô Lượng Không Xứ" và "Phục Ma Ngự Trù Tử"
+local SCRIPT_BUILD = "2026-09-13-#11"
 local AUTORUN_URL = "https://raw.githubusercontent.com/thomaderobloxtools/script-only-use/main/tho.lua"
 
 repeat task.wait() until game:IsLoaded()
@@ -738,12 +734,13 @@ local ALL_STATES = {
 	Enum.HumanoidStateType.Swimming
 }
 
-local flyConnection, flyActive
+local flyConnection, flyActive, flyBV
 
 local function stopFly()
 	State.fly = false
 	flyActive = false
 	if flyConnection then flyConnection:Disconnect() flyConnection = nil end
+	if flyBV then flyBV:Destroy() flyBV = nil end
 	refreshCharacter()
 	if humanoid then
 		for _, state in ipairs(ALL_STATES) do
@@ -781,6 +778,13 @@ local function startFly()
 		end
 	end)
 
+	flyBV = Instance.new("BodyVelocity")
+	flyBV.Name = "_ThoFlyBV"
+	flyBV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+	flyBV.Velocity = Vector3.zero
+	flyBV.P = 1e5
+	flyBV.Parent = root
+
 	flyConnection = RunService.RenderStepped:Connect(function(dt)
 		if not flyActive or not root or not root.Parent then return end
 		local cam = workspace.CurrentCamera
@@ -806,10 +810,12 @@ local function startFly()
 			vel = vel.Unit * State.flySpeed
 		end
 
+		if flyBV then
+			flyBV.Velocity = vel
+		end
+
 		local newPos = root.Position + vel * dt
 		root.CFrame = CFrame.new(newPos, newPos + cam.CFrame.LookVector)
-		root.AssemblyLinearVelocity = Vector3.zero
-		root.AssemblyAngularVelocity = Vector3.zero
 	end)
 end
 
@@ -825,6 +831,7 @@ end, 3)
 local airPlatform
 local airConnection
 local airActive = false
+local airBaseY = 0
 
 local function stopAirWalk()
 	State.airWalk = false
@@ -838,22 +845,22 @@ local function startAirWalk()
 	if not root then return end
 	airActive = true
 
+	airBaseY = root.Position.Y - 3.2
+
 	airPlatform = Instance.new("Part")
 	airPlatform.Name = "_ThoAirWalk"
-	airPlatform.Size = Vector3.new(12, 1, 12)
-	airPlatform.Transparency = 0.7
+	airPlatform.Size = Vector3.new(14, 6, 14)
+	airPlatform.Transparency = 0.75
 	airPlatform.Color = Color3.fromRGB(100, 200, 255)
 	airPlatform.Material = Enum.Material.SmoothPlastic
 	airPlatform.CanCollide = true
 	airPlatform.Anchored = true
-	airPlatform.CFrame = CFrame.new(root.Position.X, root.Position.Y - 3.5, root.Position.Z)
+	airPlatform.CFrame = CFrame.new(root.Position.X, airBaseY, root.Position.Z)
 	airPlatform.Parent = workspace
-
-	local baseY = airPlatform.Position.Y
 
 	airConnection = RunService.Heartbeat:Connect(function()
 		if not airActive or not root or not root.Parent or not airPlatform then return end
-		airPlatform.CFrame = CFrame.new(root.Position.X, baseY, root.Position.Z)
+		airPlatform.CFrame = CFrame.new(root.Position.X, airBaseY, root.Position.Z)
 	end)
 end
 
@@ -1154,6 +1161,134 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 end)
 
+local magicActive = false
+local magicConnection = nil
+local magicSavedCFrame = nil
+local magicButton = nil
+local magicSpeed = 1
+
+local function stopMagicTeleport()
+	magicActive = false
+	if magicConnection then magicConnection:Disconnect() magicConnection = nil end
+	if magicButton then magicButton:Destroy() magicButton = nil end
+
+	local cam = workspace.CurrentCamera
+	if cam then
+		cam.CameraType = Enum.CameraType.Custom
+		refreshCharacter()
+		if humanoid then
+			cam.CameraSubject = humanoid
+		end
+	end
+	magicSavedCFrame = nil
+end
+
+local function startMagicTeleport()
+	refreshCharacter()
+	if not root or not humanoid then
+		showNotice("Chưa có nhân vật.", false)
+		return
+	end
+
+	local cam = workspace.CurrentCamera
+	if not cam then return end
+
+	magicActive = true
+	magicSavedCFrame = cam.CFrame
+
+	cam.CameraType = Enum.CameraType.Scriptable
+
+	magicConnection = RunService.RenderStepped:Connect(function(dt)
+		if not magicActive then return end
+
+		local move = Vector3.zero
+		local md = humanoid.MoveDirection
+		if md.Magnitude > 0 then
+			move = md
+		else
+			if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += cam.CFrame.LookVector end
+			if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= cam.CFrame.LookVector end
+			if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += cam.CFrame.RightVector end
+			if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= cam.CFrame.RightVector end
+		end
+
+		local vert = 0
+		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then vert = 1 end
+		if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then vert = -1 end
+
+		local vel = move + Vector3.yAxis * vert
+		if vel.Magnitude > 0 then
+			vel = vel.Unit * 80
+		end
+
+		local newPos = cam.CFrame.Position + vel * dt
+		cam.CFrame = CFrame.new(newPos, newPos + cam.CFrame.LookVector)
+	end)
+
+	magicButton = Instance.new("TextButton")
+	magicButton.Size = UDim2.fromOffset(56, 56)
+	magicButton.Position = UDim2.new(0, 30, 0.5, -28)
+	magicButton.BackgroundColor3 = Color3.fromRGB(150, 30, 200)
+	magicButton.BorderSizePixel = 0
+	magicButton.Text = "⚡"
+	magicButton.TextSize = 24
+	magicButton.TextColor3 = WHITE
+	magicButton.Font = Enum.Font.GothamBold
+	magicButton.AutoButtonColor = false
+	magicButton.ZIndex = 300
+	magicButton.Parent = ScreenGui
+	addCorner(magicButton, 100)
+	addStroke(magicButton, Color3.fromRGB(200, 100, 255), 0.2, 2)
+
+	local magicDragging = false
+	local magicDragOffset
+
+	magicButton.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+			magicDragging = true
+			magicDragOffset = Vector2.new(input.Position.X, input.Position.Y) - magicButton.AbsolutePosition
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if magicDragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+			or input.UserInputType == Enum.UserInputType.Touch) then
+			local newPos = Vector2.new(input.Position.X, input.Position.Y) - magicDragOffset
+			magicButton.Position = UDim2.fromOffset(newPos.X, newPos.Y)
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+			magicDragging = false
+		end
+	end)
+
+	magicButton.Activated:Connect(function()
+		if not magicActive then return end
+		local camPos = cam.CFrame.Position
+		refreshCharacter()
+		if root then
+			root.CFrame = CFrame.new(camPos)
+		end
+		stopMagicTeleport()
+		showNotice("Đã dịch chuyển!", true)
+	end)
+end
+
+local magicToggle
+magicToggle = createToggle(PlayerPage, "Dịch chuyển ảo thuật", "Tách camera khỏi nhân vật, di chuyển tới vị trí mong muốn rồi bấm nút tròn để teleport.", false, function(value)
+	if value then
+		startMagicTeleport()
+	else
+		stopMagicTeleport()
+	end
+end, 18)
+
+createSection(VisualPage, "Visual", 1)
+
 local AntiLag = {
 	active = false,
 	originals = {},
@@ -1399,8 +1534,6 @@ local function stopAntiLag()
 	end
 end
 
-createSection(VisualPage, "Visual", 1)
-
 createToggle(VisualPage, "Giảm lag", "Hạ đồ họa mạnh (SmoothPlastic, tắt đèn, decal, sky, atmosphere).", false, function(value)
 	State.antiLag = value
 	if value then startAntiLag() else stopAntiLag() end
@@ -1426,14 +1559,172 @@ blackOverlay.Parent = ScreenGui
 
 createToggle(VisualPage, "Màn hình trắng", "Che toàn màn hình màu trắng (treo game).", false, function(value)
 	whiteOverlay.Visible = value
-	if value and State.antiLag then
-		settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
-	end
 end, 3)
 
 createToggle(VisualPage, "Màn hình đen", "Che toàn màn hình màu đen (treo game).", false, function(value)
 	blackOverlay.Visible = value
 end, 4)
+
+local freeCamActive = false
+local freeCamConnection = nil
+local freeCamSavedSubject = nil
+
+local function stopFreeCam()
+	freeCamActive = false
+	if freeCamConnection then freeCamConnection:Disconnect() freeCamConnection = nil end
+	local cam = workspace.CurrentCamera
+	if cam then
+		cam.CameraType = Enum.CameraType.Custom
+		refreshCharacter()
+		if humanoid then
+			cam.CameraSubject = humanoid
+		end
+	end
+end
+
+local function startFreeCam()
+	local cam = workspace.CurrentCamera
+	if not cam then return end
+
+	freeCamActive = true
+	freeCamSavedSubject = cam.CameraSubject
+
+	cam.CameraType = Enum.CameraType.Scriptable
+
+	freeCamConnection = RunService.RenderStepped:Connect(function(dt)
+		if not freeCamActive then return end
+
+		local move = Vector3.zero
+		if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += cam.CFrame.LookVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= cam.CFrame.LookVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += cam.CFrame.RightVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= cam.CFrame.RightVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move += Vector3.yAxis end
+		if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move -= Vector3.yAxis end
+
+		local speed = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and 200 or 80
+		local newPos = cam.CFrame.Position + move.Unit * speed * dt * (move.Magnitude > 0 and 1 or 0)
+		if move.Magnitude > 0 then
+			cam.CFrame = CFrame.new(newPos, newPos + cam.CFrame.LookVector)
+		end
+	end)
+end
+
+createToggle(VisualPage, "Xem từ xa", "Tách camera ra khỏi nhân vật, dùng WASD + Space/Ctrl để di chuyển tự do.", false, function(value)
+	if value then startFreeCam() else stopFreeCam() end
+end, 5)
+
+createSection(VisualPage, "Hiệu ứng", 6)
+
+local poseConnection = nil
+local poseName = nil
+
+local function resetPose()
+	if poseConnection then poseConnection:Disconnect() poseConnection = nil end
+	refreshCharacter()
+	if not character then poseName = nil return end
+
+	if humanoid then
+		pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+	end
+	local animate = character:FindFirstChild("Animate")
+	if animate then
+		pcall(function() animate.Disabled = false end)
+	end
+
+	local function resetMotor(m)
+		if m:IsA("Motor6D") or m:IsA("Motor") then
+			if m.Name == "Right Shoulder" then
+				m.C0 = CFrame.new(1, 0.5, 0) * CFrame.Angles(0, math.rad(90), 0)
+			elseif m.Name == "Left Shoulder" then
+				m.C0 = CFrame.new(-1, 0.5, 0) * CFrame.Angles(0, math.rad(-90), 0)
+			end
+		end
+	end
+
+	for _, obj in ipairs(character:GetDescendants()) do
+		resetMotor(obj)
+	end
+	if character:FindFirstChild("UpperTorso") then
+		for _, obj in ipairs(character.UpperTorso:GetChildren()) do
+			if obj:IsA("Motor6D") and (obj.Name == "RightShoulder" or obj.Name == "LeftShoulder") then
+				if obj.Name == "RightShoulder" then
+					obj.C0 = CFrame.new(1, 0.5, 0) * CFrame.Angles(0, math.rad(90), 0)
+				elseif obj.Name == "LeftShoulder" then
+					obj.C0 = CFrame.new(-1, 0.5, 0) * CFrame.Angles(0, math.rad(-90), 0)
+				end
+			end
+		end
+	end
+
+	poseName = nil
+end
+
+local function applyPose(poseId)
+	resetPose()
+	refreshCharacter()
+	if not character or not humanoid then return end
+
+	local animate = character:FindFirstChild("Animate")
+	if animate then
+		pcall(function() animate.Disabled = true end)
+	end
+
+	poseName = poseId
+
+	local function applyMotor(m)
+		if not (m:IsA("Motor6D") or m:IsA("Motor")) then return end
+		if m.Name == "Right Shoulder" or m.Name == "RightShoulder" then
+			if poseId == "void" then
+				m.C0 = CFrame.new(0.9, 0.7, 0.2) * CFrame.Angles(math.rad(-60), math.rad(60), math.rad(-40))
+			elseif poseId == "shrine" then
+				m.C0 = CFrame.new(0.3, 0.4, -0.4) * CFrame.Angles(math.rad(-90), math.rad(-20), math.rad(-30))
+			end
+		elseif m.Name == "Left Shoulder" or m.Name == "LeftShoulder" then
+			if poseId == "void" then
+				m.C0 = CFrame.new(-1, 0.5, 0) * CFrame.Angles(0, math.rad(-90), 0)
+			elseif poseId == "shrine" then
+				m.C0 = CFrame.new(-0.3, 0.4, -0.4) * CFrame.Angles(math.rad(-90), math.rad(20), math.rad(30))
+			end
+		end
+	end
+
+	for _, obj in ipairs(character:GetDescendants()) do
+		applyMotor(obj)
+	end
+	if character:FindFirstChild("UpperTorso") then
+		for _, obj in ipairs(character.UpperTorso:GetChildren()) do
+			if obj:IsA("Motor6D") then applyMotor(obj) end
+		end
+	end
+
+	poseConnection = RunService.RenderStepped:Connect(function()
+		if not character or not character.Parent then return end
+		for _, obj in ipairs(character:GetDescendants()) do
+			applyMotor(obj)
+		end
+		if character:FindFirstChild("UpperTorso") then
+			for _, obj in ipairs(character.UpperTorso:GetChildren()) do
+				if obj:IsA("Motor6D") then applyMotor(obj) end
+			end
+		end
+	end)
+end
+
+createButton(VisualPage, "Vô Lượng Không Xứ", "Tay phải giơ lên gần mặt (Gojo).", function()
+	applyPose("void")
+	showNotice("Đã kích hoạt Vô Lượng Không Xứ", true)
+end, 7)
+
+createButton(VisualPage, "Phục Ma Ngự Trù Tử", "Hai tay chắp trước ngực (Sukuna).", function()
+	applyPose("shrine")
+	showNotice("Đã kích hoạt Phục Ma Ngự Trù Tử", true)
+end, 8)
+
+createButton(VisualPage, "Tắt hiệu ứng", "Trở về tư thế bình thường.", function()
+	resetPose()
+	showNotice("Đã tắt hiệu ứng.", true)
+end, 9)
 
 createSection(ServerPage, "Server", 1)
 
@@ -1771,6 +2062,17 @@ LocalPlayer.CharacterAdded:Connect(function(char)
 	if State.antiLag then
 		task.delay(1, function()
 			if State.antiLag then startAntiLag() end
+		end)
+	end
+	if magicToggle and magicToggle.Get() then
+		stopMagicTeleport()
+		task.delay(0.5, function()
+			magicToggle.SetSilent(false)
+		end)
+	end
+	if poseName then
+		task.delay(0.3, function()
+			applyPose(poseName)
 		end)
 	end
 end)
