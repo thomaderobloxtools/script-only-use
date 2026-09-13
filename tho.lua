@@ -1,12 +1,13 @@
--- [ThoScript] BUILD: 2026-09-13 #8
--- - Fix bay: dùng CFrame + MoveDirection (mobile + PC)
--- - Fix nằm: đúng tư thế ngửa, không cứng
--- - Fix nút T: luôn hiện, toggle menu
--- - Fix menu bị chèn ra ngoài màn hình khi bung
--- - Giảm lag mạnh hơn: QualityLevel 1, tắt hết hiệu ứng
--- - Thêm nút "Đặt lại nhân vật" và "Dịch chuyển về điểm hồi sinh"
--- - Bỏ comment phân đoạn
-local SCRIPT_BUILD = "2026-09-13-#8"
+-- [ThoScript] BUILD: 2026-09-13 #9
+-- - Fix fly dùng BodyVelocity + BodyGyro (không lún)
+-- - Nằm cho phép nhảy: Space tự đứng dậy nhảy rồi nằm lại
+-- - Menu giữ top-left khi đổi size, không bị chèn ra ngoài
+-- - Fix lag mạnh hơn: SmoothPlastic, RenderFidelity Performance
+-- - Toggle "Tự động chạy script" hook queue_on_teleport
+-- - Spin bỏ pause, max 100
+-- - Slider max fly 500, walk 500, jump 500
+local SCRIPT_BUILD = "2026-09-13-#9"
+local AUTORUN_URL = "https://raw.githubusercontent.com/thomaderobloxtools/script-only-use/main/tho.lua"
 
 repeat task.wait() until game:IsLoaded()
 
@@ -595,7 +596,7 @@ local State = {
 	spin = false,
 	esp = false,
 	antiLag = false,
-	flySpeed = 60,
+	flySpeed = 100,
 	walkSpeed = 40,
 	jumpPower = 80,
 	spinSpeed = 15
@@ -619,13 +620,14 @@ LocalPlayer.CharacterAdded:Connect(function(char)
 	root = char:WaitForChild("HumanoidRootPart", 5)
 end)
 
-local flyConnection
-local flyActive = false
+local flyBV, flyBG, flyConnection, flyActive
 
 local function stopFly()
 	State.fly = false
 	flyActive = false
 	if flyConnection then flyConnection:Disconnect() flyConnection = nil end
+	if flyBV then flyBV:Destroy() flyBV = nil end
+	if flyBG then flyBG:Destroy() flyBG = nil end
 	refreshCharacter()
 	if humanoid then
 		humanoid.PlatformStand = false
@@ -644,7 +646,22 @@ local function startFly()
 	flyActive = true
 	humanoid.PlatformStand = true
 
-	flyConnection = RunService.RenderStepped:Connect(function(dt)
+	flyBV = Instance.new("BodyVelocity")
+	flyBV.Name = "_ThoFlyBV"
+	flyBV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+	flyBV.Velocity = Vector3.zero
+	flyBV.P = 1250
+	flyBV.Parent = root
+
+	flyBG = Instance.new("BodyGyro")
+	flyBG.Name = "_ThoFlyBG"
+	flyBG.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+	flyBG.P = 9e4
+	flyBG.D = 50
+	flyBG.CFrame = root.CFrame
+	flyBG.Parent = root
+
+	flyConnection = RunService.RenderStepped:Connect(function()
 		if not flyActive or not root or not root.Parent then return end
 		local cam = workspace.CurrentCamera
 		if not cam then return end
@@ -669,19 +686,17 @@ local function startFly()
 			vel = vel.Unit * State.flySpeed
 		end
 
-		local newPos = root.Position + vel * dt
-		root.CFrame = CFrame.new(newPos, newPos + cam.CFrame.LookVector)
-		root.AssemblyLinearVelocity = Vector3.zero
-		root.AssemblyAngularVelocity = Vector3.zero
+		flyBV.Velocity = vel
+		flyBG.CFrame = CFrame.new(root.Position, root.Position + cam.CFrame.LookVector)
 	end)
 end
 
-createToggle(PlayerPage, "Bay", "Dùng joystick hoặc WASD để bay, Space/Ctrl để lên xuống.", false, function(value)
+createToggle(PlayerPage, "Bay", "Dùng joystick/WASD, Space/Ctrl để lên xuống.", false, function(value)
 	State.fly = value
 	if value then startFly() else stopFly() end
 end, 2)
 
-createSlider(PlayerPage, "Tốc độ bay", "Kéo để chỉnh tốc độ bay, tối đa 200.", 10, 200, State.flySpeed, function(value)
+createSlider(PlayerPage, "Tốc độ bay", "Kéo để chỉnh tốc độ bay, tối đa 500.", 10, 500, State.flySpeed, function(value)
 	State.flySpeed = value
 end, 3)
 
@@ -725,12 +740,12 @@ local function applyWalkSpeed()
 	end
 end
 
-createToggle(PlayerPage, "Chạy nhanh", "Thay đổi tốc độ di chuyển của Humanoid.", false, function(value)
+createToggle(PlayerPage, "Chạy nhanh", "Thay đổi tốc độ di chuyển.", false, function(value)
 	State.speed = value
 	applyWalkSpeed()
 end, 5)
 
-createSlider(PlayerPage, "Tốc độ chạy", "Kéo để chỉnh từ 16 đến 200.", 16, 200, State.walkSpeed, function(value)
+createSlider(PlayerPage, "Tốc độ chạy", "Kéo để chỉnh từ 16 đến 500.", 16, 500, State.walkSpeed, function(value)
 	State.walkSpeed = value
 	if State.speed then applyWalkSpeed() end
 end, 6)
@@ -748,7 +763,7 @@ createToggle(PlayerPage, "Nhảy cao", "Tăng JumpPower của nhân vật.", fal
 	applyJumpPower()
 end, 7)
 
-createSlider(PlayerPage, "Độ cao nhảy", "Kéo để chỉnh JumpPower tối đa 200.", 50, 200, State.jumpPower, function(value)
+createSlider(PlayerPage, "Độ cao nhảy", "Kéo để chỉnh JumpPower tối đa 500.", 50, 500, State.jumpPower, function(value)
 	State.jumpPower = value
 	if State.jump then applyJumpPower() end
 end, 8)
@@ -780,6 +795,7 @@ createToggle(PlayerPage, "Đi xuyên tường", "Tắt collision của nhân v�
 end, 9)
 
 local lyingConnection
+local lyingTempDisabled = false
 
 local function stopLying()
 	State.lying = false
@@ -807,10 +823,30 @@ local function startLying()
 	end)
 end
 
-createToggle(PlayerPage, "Nằm", "Nằm ngửa mặt lên trời (tắt để đứng dậy).", false, function(value)
+createToggle(PlayerPage, "Nằm", "Nằm ngửa. Nhấn Space để tạm đứng dậy nhảy.", false, function(value)
 	State.lying = value
 	if value then startLying() else stopLying() end
 end, 10)
+
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed then return end
+	if input.KeyCode == Enum.KeyCode.Space and State.lying and not lyingTempDisabled and not State.fly then
+		lyingTempDisabled = true
+		if lyingConnection then lyingConnection:Disconnect() lyingConnection = nil end
+		refreshCharacter()
+		if humanoid then
+			humanoid.PlatformStand = false
+			humanoid.AutoRotate = true
+			pcall(function()
+				humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+			end)
+			humanoid.Jump = true
+		end
+		task.wait(0.9)
+		lyingTempDisabled = false
+		if State.lying then startLying() end
+	end
+end)
 
 createToggle(PlayerPage, "Ngồi", "Đưa Humanoid vào trạng thái ngồi.", false, function(value)
 	State.sitting = value
@@ -828,25 +864,19 @@ end
 local function startSpin()
 	spinConnection = RunService.RenderStepped:Connect(function(delta)
 		if not State.spin then return end
-		local moving = UserInputService:IsKeyDown(Enum.KeyCode.W)
-			or UserInputService:IsKeyDown(Enum.KeyCode.A)
-			or UserInputService:IsKeyDown(Enum.KeyCode.S)
-			or UserInputService:IsKeyDown(Enum.KeyCode.D)
-			or (humanoid and humanoid.MoveDirection.Magnitude > 0)
-		if moving then return end
 		refreshCharacter()
 		if root then
-			root.CFrame *= CFrame.Angles(0, math.rad(State.spinSpeed * 20) * delta, 0)
+			root.CFrame *= CFrame.Angles(0, math.rad(State.spinSpeed * 30) * delta, 0)
 		end
 	end)
 end
 
-createToggle(PlayerPage, "Xoay", "Xoay nhân vật liên tục (tạm dừng khi di chuyển).", false, function(value)
+createToggle(PlayerPage, "Xoay", "Xoay nhân vật liên tục kể cả khi di chuyển.", false, function(value)
 	State.spin = value
 	if value then startSpin() else stopSpin() end
 end, 12)
 
-createSlider(PlayerPage, "Tốc độ xoay", "Kéo để chỉnh tốc độ từ 1 đến 50.", 1, 50, State.spinSpeed, function(value)
+createSlider(PlayerPage, "Tốc độ xoay", "Kéo để chỉnh tốc độ từ 1 đến 100.", 1, 100, State.spinSpeed, function(value)
 	State.spinSpeed = value
 end, 13)
 
@@ -984,7 +1014,9 @@ local AntiLag = {
 	connections = {},
 	lightingBackup = nil,
 	terrainBackup = nil,
-	qualityBackup = nil
+	qualityBackup = nil,
+	atmosphereBackup = nil,
+	skyBackup = nil
 }
 
 local function backupLighting()
@@ -1017,24 +1049,57 @@ local function applyLighting()
 	Lighting.EnvironmentDiffuseScale = 0
 	Lighting.EnvironmentSpecularScale = 0
 	pcall(function()
-		Lighting.Ambient = Color3.fromRGB(140, 140, 140)
-		Lighting.OutdoorAmbient = Color3.fromRGB(140, 140, 140)
+		Lighting.Ambient = Color3.fromRGB(180, 180, 180)
+		Lighting.OutdoorAmbient = Color3.fromRGB(180, 180, 180)
 	end)
 
 	for _, effect in ipairs(Lighting:GetChildren()) do
-		if effect:IsA("PostEffect") or effect:IsA("Atmosphere") or effect:IsA("Sky") then
+		if effect:IsA("PostEffect") then
 			if not AntiLag.originals[effect] then
 				AntiLag.originals[effect] = { Enabled = effect.Enabled }
 			end
 			pcall(function() effect.Enabled = false end)
+		elseif effect:IsA("Atmosphere") then
+			if not AntiLag.atmosphereBackup then
+				AntiLag.atmosphereBackup = {
+					obj = effect,
+					Density = effect.Density,
+					Haze = effect.Haze,
+					Glare = effect.Glare
+				}
+			end
+			pcall(function()
+				effect.Density = 0
+				effect.Haze = 0
+				effect.Glare = 0
+			end)
+		elseif effect:IsA("Sky") then
+			if not AntiLag.skyBackup then
+				AntiLag.skyBackup = { obj = effect, parent = effect.Parent }
+			end
+			pcall(function() effect.Parent = nil end)
 		end
 	end
 end
 
 local function optimizeObject(obj)
 	if not obj or not obj.Parent then return end
+	if AntiLag.originals[obj] then return end
 
-	if obj:IsA("BasePart") then
+	if obj:IsA("MeshPart") then
+		AntiLag.originals[obj] = {
+			RenderFidelity = obj.RenderFidelity,
+			CastShadow = obj.CastShadow,
+			Material = obj.Material,
+			Reflectance = obj.Reflectance
+		}
+		pcall(function()
+			obj.RenderFidelity = Enum.RenderFidelity.Performance
+			obj.CastShadow = false
+			obj.Material = Enum.Material.SmoothPlastic
+			obj.Reflectance = 0
+		end)
+	elseif obj:IsA("BasePart") then
 		AntiLag.originals[obj] = {
 			CastShadow = obj.CastShadow,
 			Reflectance = obj.Reflectance,
@@ -1133,12 +1198,27 @@ local function stopAntiLag()
 		end
 	end)
 
+	if AntiLag.atmosphereBackup and AntiLag.atmosphereBackup.obj then
+		pcall(function()
+			AntiLag.atmosphereBackup.obj.Density = AntiLag.atmosphereBackup.Density
+			AntiLag.atmosphereBackup.obj.Haze = AntiLag.atmosphereBackup.Haze
+			AntiLag.atmosphereBackup.obj.Glare = AntiLag.atmosphereBackup.Glare
+		end)
+		AntiLag.atmosphereBackup = nil
+	end
+
+	if AntiLag.skyBackup and AntiLag.skyBackup.obj then
+		pcall(function() AntiLag.skyBackup.obj.Parent = AntiLag.skyBackup.parent end)
+		AntiLag.skyBackup = nil
+	end
+
 	for obj, data in pairs(AntiLag.originals) do
 		if obj and obj.Parent then
 			pcall(function()
 				if data.CastShadow ~= nil then obj.CastShadow = data.CastShadow end
 				if data.Reflectance ~= nil then obj.Reflectance = data.Reflectance end
 				if data.Material ~= nil then obj.Material = data.Material end
+				if data.RenderFidelity ~= nil then obj.RenderFidelity = data.RenderFidelity end
 				if data.Rate ~= nil then obj.Rate = data.Rate end
 				if data.Enabled ~= nil then
 					if obj:IsA("PostEffect") or obj:IsA("Trail") or obj:IsA("Beam")
@@ -1165,7 +1245,7 @@ local function stopAntiLag()
 	end
 end
 
-createToggle(PlayerPage, "Giảm lag", "Hạ đồ họa mạnh để tăng FPS (tắt shadow, particle, decal, post-effect...).", false, function(value)
+createToggle(PlayerPage, "Giảm lag", "Hạ đồ họa mạnh (SmoothPlastic, tắt đèn, decal, sky, atmosphere).", false, function(value)
 	State.antiLag = value
 	if value then startAntiLag() else stopAntiLag() end
 end, 15)
@@ -1174,9 +1254,7 @@ createButton(PlayerPage, "Đặt lại nhân vật", "Reset nhân vật về tr�
 	local char = LocalPlayer.Character
 	if not char then return end
 	local hum = char:FindFirstChildOfClass("Humanoid")
-	if hum then
-		hum.Health = 0
-	end
+	if hum then hum.Health = 0 end
 end, 16)
 
 createButton(PlayerPage, "Dịch chuyển về điểm hồi sinh", "Teleport nhân vật về SpawnLocation của game.", function()
@@ -1204,6 +1282,8 @@ end, 17)
 
 createSection(ServerPage, "Server", 1)
 
+local autoRun = false
+
 local function fetchServers(placeId, callback)
 	task.spawn(function()
 		local url = string.format(
@@ -1221,7 +1301,21 @@ local function fetchServers(placeId, callback)
 	end)
 end
 
+local function queueScript()
+	if not autoRun then return end
+	if AUTORUN_URL == "" then return end
+	local source = "loadstring(game:HttpGet('" .. AUTORUN_URL .. "'))()"
+	pcall(function()
+		if type(queue_on_teleport) == "function" then
+			queue_on_teleport(source)
+		elseif type(syn) == "table" and type(syn.queue_on_teleport) == "function" then
+			syn.queue_on_teleport(source)
+		end
+	end)
+end
+
 local function hopToServer(targetJobId)
+	queueScript()
 	local ok, err = pcall(function()
 		TeleportService:TeleportToPlaceInstance(game.PlaceId, targetJobId, LocalPlayer)
 	end)
@@ -1294,6 +1388,7 @@ createButton(ServerPage, "Tham gia lại máy chủ", "Thử quay lại đúng J
 		showNotice("Không có JobId hợp lệ.", false)
 		return
 	end
+	queueScript()
 	local ok = pcall(function()
 		TeleportService:TeleportToPlaceInstance(game.PlaceId, jobId, LocalPlayer)
 	end)
@@ -1302,17 +1397,28 @@ createButton(ServerPage, "Tham gia lại máy chủ", "Thử quay lại đúng J
 	end
 end, 4)
 
-createButton(ServerPage, "Tự động chạy lại script", "Hiển thị hướng dẫn bật auto-exec cho script tự chạy sau khi đổi server.", function()
-	local supported = false
+createToggle(ServerPage, "Tự động chạy lại script", "Tự chạy lại sau khi đổi server (cần URL + executor hỗ trợ queue_on_teleport).", false, function(value)
+	autoRun = value
+	if not value then
+		showNotice("Đã tắt tự động chạy lại.", true)
+		return
+	end
+
+	if AUTORUN_URL == "" then
+		showNotice("Cần điền AUTORUN_URL ở đầu script.", false)
+		return
+	end
+
+	local hasQueue = false
 	pcall(function()
-		if type(queue_on_teleport) == "function" then supported = true end
-		if type(syn) == "table" and type(syn.queue_on_teleport) == "function" then supported = true end
+		if type(queue_on_teleport) == "function" then hasQueue = true end
+		if type(syn) == "table" and type(syn.queue_on_teleport) == "function" then hasQueue = true end
 	end)
 
-	if supported then
-		showNotice("Executor có hỗ trợ queue, nhưng không đọc được source. Cần cấu hình auto-exec.", false)
+	if hasQueue then
+		showNotice("Đã bật. Script sẽ tự chạy lại sau khi đổi server.", true)
 	else
-		showNotice("Byfron chặn queue_on_teleport. Bật auto-exec trong executor để script tự chạy lại.", false)
+		showNotice("Executor không hỗ trợ queue_on_teleport. Bật auto-exec.", false)
 	end
 end, 5)
 
@@ -1365,18 +1471,27 @@ local minimized = false
 local maximized = false
 local menuOpen = true
 
-local function clampMenuPosition()
+local function resizeKeepingTopLeft(newSize)
+	local cam = workspace.CurrentCamera
+	if not cam then return end
+	local vp = cam.ViewportSize
+	local ap = Main.AbsolutePosition
+	local tlX, tlY = ap.X, ap.Y
+
+	Main.Size = newSize
+
 	task.defer(function()
-		local cam = workspace.CurrentCamera
-		if not cam then return end
-		local vp = cam.ViewportSize
-		local ap = Main.AbsolutePosition
-		local as_ = Main.AbsoluteSize
-		local newX = math.clamp(ap.X, 0, math.max(0, vp.X - as_.X))
-		local newY = math.clamp(ap.Y, 0, math.max(0, vp.Y - as_.Y))
-		if newX ~= ap.X or newY ~= ap.Y then
-			Main.Position = UDim2.fromOffset(newX + as_.X * 0.5, newY + as_.Y * 0.5)
-		end
+		local ns = Main.AbsoluteSize
+		local cx = tlX + ns.X * 0.5
+		local cy = tlY + ns.Y * 0.5
+
+		if tlX + ns.X > vp.X then cx = vp.X - ns.X * 0.5 end
+		if tlY + ns.Y > vp.Y then cy = vp.Y - ns.Y * 0.5 end
+
+		cx = math.clamp(cx, ns.X * 0.5, math.max(ns.X * 0.5, vp.X - ns.X * 0.5))
+		cy = math.clamp(cy, ns.Y * 0.5, math.max(ns.Y * 0.5, vp.Y - ns.Y * 0.5))
+
+		Main.Position = UDim2.fromOffset(cx, cy)
 	end)
 end
 
@@ -1395,15 +1510,14 @@ MinimizeButton.Activated:Connect(function()
 	if minimized then
 		Sidebar.Visible = false
 		Content.Visible = false
-		tween(Main, 0.22, {Size = UDim2.fromOffset(MAIN_WIDTH, MAIN_MIN_HEIGHT)})
+		resizeKeepingTopLeft(UDim2.fromOffset(MAIN_WIDTH, MAIN_MIN_HEIGHT))
 		MenuSubtitle.Text = "Đã thu nhỏ"
 	else
 		Sidebar.Visible = true
 		Content.Visible = true
-		tween(Main, 0.22, {Size = originalSize})
+		resizeKeepingTopLeft(originalSize)
 		MenuSubtitle.Text = "Build " .. SCRIPT_BUILD
 	end
-	clampMenuPosition()
 end)
 
 MaximizeButton.Activated:Connect(function()
@@ -1413,8 +1527,7 @@ MaximizeButton.Activated:Connect(function()
 		Content.Visible = true
 	end
 	maximized = not maximized
-	tween(Main, 0.24, {Size = maximized and UDim2.fromOffset(820, 520) or originalSize})
-	clampMenuPosition()
+	resizeKeepingTopLeft(maximized and UDim2.fromOffset(820, 520) or originalSize)
 end)
 
 CloseButton.Activated:Connect(function()
