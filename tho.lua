@@ -1,10 +1,10 @@
--- [ThoScript] BUILD: 2026-09-13 #14
--- - Fix camera dùng BindToRenderStep (magic + freecam hoạt động đúng)
--- - Fix pose Gojo: tay phải ra trước mặt
--- - Fix pose Sukuna: 2 tay chấp trước ngực
--- - Đổi emoji nút thành chữ CAM/TP
--- - Thêm fallback mobile cho camera
-local SCRIPT_BUILD = "2026-09-13-#14"
+-- [ThoScript] BUILD: 2026-09-13 #15
+-- - Fix pose Gojo: nhân thêm rotation -90 X vào base C0 (tay ra trước)
+-- - Fix pose Sukuna: 2 tay nhân -90 X, chếch vào trong
+-- - Fix skeleton ESP: dùng BindToRenderStep khớp camera
+-- - Thêm tia chỉ hướng từ ô top tới từng player
+-- - Viền nút CAM dày, màu trắng đậm
+local SCRIPT_BUILD = "2026-09-13-#15"
 local AUTORUN_URL = "https://raw.githubusercontent.com/thomaderobloxtools/script-only-use/main/tho.lua"
 
 repeat task.wait() until game:IsLoaded()
@@ -1129,14 +1129,15 @@ local ESPPro = {
 	topFrame = nil,
 	topLabel = nil,
 	players = {},
-	connection = nil
+	indicators = {},
+	bindName = "ThoESPProUpdate"
 }
 
-local function worldToScreen(pos)
+local function worldToViewport(pos)
 	local cam = workspace.CurrentCamera
 	if not cam then return Vector2.new(0, 0), false end
-	local sp, onScreen = cam:WorldToScreenPoint(pos)
-	return Vector2.new(sp.X, sp.Y), onScreen
+	local sp, onScreen = cam:WorldToViewportPoint(pos)
+	return Vector2.new(sp.X, sp.Y), onScreen and sp.Z > 0
 end
 
 local function createSkeleton(player)
@@ -1178,6 +1179,12 @@ local function destroySkeleton(player)
 	if not d then return end
 	if d.gui then d.gui:Destroy() end
 	ESPPro.players[player] = nil
+
+	local ind = ESPPro.indicators[player]
+	if ind then
+		ind:Destroy()
+		ESPPro.indicators[player] = nil
+	end
 end
 
 local function drawLine(l, a, b)
@@ -1217,12 +1224,12 @@ local function updateSkeleton(player, targetCharacter)
 		end
 	end
 
-	local headScreen, headOn = worldToScreen(parts.Head.Position)
-	local torsoScreen, torsoOn = worldToScreen(parts.Torso.Position)
-	local lArmScreen, lArmOn = worldToScreen(parts.LeftArm.Position)
-	local rArmScreen, rArmOn = worldToScreen(parts.RightArm.Position)
-	local lLegScreen, lLegOn = worldToScreen(parts.LeftLeg.Position)
-	local rLegScreen, rLegOn = worldToScreen(parts.RightLeg.Position)
+	local headScreen, headOn = worldToViewport(parts.Head.Position)
+	local torsoScreen, torsoOn = worldToViewport(parts.Torso.Position)
+	local lArmScreen, lArmOn = worldToViewport(parts.LeftArm.Position)
+	local rArmScreen, rArmOn = worldToViewport(parts.RightArm.Position)
+	local lLegScreen, lLegOn = worldToViewport(parts.LeftLeg.Position)
+	local rLegScreen, rLegOn = worldToViewport(parts.RightLeg.Position)
 
 	if not (headOn and torsoOn and lArmOn and rArmOn and lLegOn and rLegOn) then
 		for _, l in ipairs(data.lines) do
@@ -1252,6 +1259,20 @@ local function updateSkeleton(player, targetCharacter)
 	for i = 2, 5 do
 		data.lines[i].head.Visible = false
 	end
+
+	if not ESPPro.indicators[player] then
+		local line = Instance.new("Frame")
+		line.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+		line.BorderSizePixel = 0
+		line.ZIndex = 45002
+		line.Parent = ESPPro.folder
+		ESPPro.indicators[player] = line
+	end
+
+	local indicator = ESPPro.indicators[player]
+	local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1000, 600)
+	local topCenter = Vector2.new(vp.X * 0.5, 40)
+	drawLine(indicator, topCenter, headScreen)
 end
 
 local function clearSkeleton(player)
@@ -1260,6 +1281,28 @@ local function clearSkeleton(player)
 	for _, l in ipairs(d.lines) do
 		l.line.Visible = false
 		l.head.Visible = false
+	end
+	local ind = ESPPro.indicators[player]
+	if ind then ind.Visible = false end
+end
+
+local function renderESPPro()
+	if not ESPPro.active then return end
+	local count = 0
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer then
+			local targetCharacter = player.Character
+			if targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart") then
+				count += 1
+				updateSkeleton(player, targetCharacter)
+			else
+				clearSkeleton(player)
+			end
+		end
+	end
+
+	if ESPPro.topLabel then
+		ESPPro.topLabel.Text = "Người chơi: " .. count
 	end
 end
 
@@ -1289,41 +1332,31 @@ local function startESPPro()
 	ESPPro.topLabel.TextXAlignment = Enum.TextXAlignment.Center
 	ESPPro.topLabel.ZIndex = 46001
 
-	ESPPro.connection = RunService.RenderStepped:Connect(function()
-		if not ESPPro.active then return end
-
-		local count = 0
-		for _, player in ipairs(Players:GetPlayers()) do
-			if player ~= LocalPlayer then
-				local targetCharacter = player.Character
-				if targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart") then
-					count += 1
-					updateSkeleton(player, targetCharacter)
-				else
-					clearSkeleton(player)
-				end
-			end
-		end
-
-		if ESPPro.topLabel then
-			ESPPro.topLabel.Text = "Người chơi: " .. count
-		end
+	pcall(function()
+		RunService:UnbindFromRenderStep(ESPPro.bindName)
 	end)
+	RunService:BindToRenderStep(ESPPro.bindName, Enum.RenderPriority.Camera.Value + 1, renderESPPro)
 end
 
 local function stopESPPro()
 	ESPPro.active = false
 	State.espPro = false
 
-	if ESPPro.connection then
-		ESPPro.connection:Disconnect()
-		ESPPro.connection = nil
-	end
+	pcall(function()
+		RunService:UnbindFromRenderStep(ESPPro.bindName)
+	end)
 
 	for player, _ in pairs(ESPPro.players) do
 		destroySkeleton(player)
 	end
 	ESPPro.players = {}
+
+	for player, _ in pairs(ESPPro.indicators) do
+		if ESPPro.indicators[player] then
+			ESPPro.indicators[player]:Destroy()
+		end
+	end
+	ESPPro.indicators = {}
 
 	if ESPPro.folder then
 		ESPPro.folder:Destroy()
@@ -1336,7 +1369,7 @@ local function stopESPPro()
 	end
 end
 
-createToggle(PlayerPage, "Định vị nâng cao", "Skeleton ESP + bảng đếm người chơi trên cùng.", false, function(value)
+createToggle(PlayerPage, "Định vị nâng cao", "Skeleton ESP + tia chỉ hướng + bảng đếm người chơi.", false, function(value)
 	if value then startESPPro() else stopESPPro() end
 end, 15)
 
@@ -1464,6 +1497,8 @@ local function splitCamera()
 	if magicButton then
 		magicButton.Text = "TP"
 		magicButton.BackgroundColor3 = Color3.fromRGB(255, 100, 30)
+		local s = magicButton:FindFirstChildOfClass("UIStroke")
+		if s then s.Color = Color3.fromRGB(255, 200, 100) end
 	end
 end
 
@@ -1492,6 +1527,8 @@ local function mergeCamera()
 	if magicButton then
 		magicButton.Text = "CAM"
 		magicButton.BackgroundColor3 = Color3.fromRGB(150, 30, 200)
+		local s = magicButton:FindFirstChildOfClass("UIStroke")
+		if s then s.Color = Color3.fromRGB(255, 255, 255) end
 	end
 end
 
@@ -1536,7 +1573,7 @@ local function startMagicTeleport()
 	magicButton.ZIndex = 300
 	magicButton.Parent = ScreenGui
 	addCorner(magicButton, 100)
-	addStroke(magicButton, Color3.fromRGB(255, 220, 255), 0, 4)
+	addStroke(magicButton, Color3.fromRGB(255, 255, 255), 0, 5)
 
 	local dragging = false
 	local dragOffset
@@ -1991,15 +2028,15 @@ local function applyPoseMotor(m, poseId)
 
 	if poseId == "void" then
 		if isRight then
-			m.C0 = CFrame.new(1, 0.5, -0.3) * CFrame.Angles(math.rad(-110), 0, math.rad(-20))
+			m.C0 = CFrame.new(1, 0.5, 0) * CFrame.Angles(0, math.rad(90), 0) * CFrame.Angles(math.rad(-95), 0, math.rad(-15))
 		elseif isLeft then
 			m.C0 = CFrame.new(-1, 0.5, 0) * CFrame.Angles(0, math.rad(-90), 0)
 		end
 	elseif poseId == "shrine" then
 		if isRight then
-			m.C0 = CFrame.new(0.4, 0.8, -0.5) * CFrame.Angles(math.rad(-120), 0, math.rad(-25))
+			m.C0 = CFrame.new(1, 0.5, 0) * CFrame.Angles(0, math.rad(90), 0) * CFrame.Angles(math.rad(-95), 0, math.rad(-25))
 		elseif isLeft then
-			m.C0 = CFrame.new(-0.4, 0.8, -0.5) * CFrame.Angles(math.rad(-120), 0, math.rad(25))
+			m.C0 = CFrame.new(-1, 0.5, 0) * CFrame.Angles(0, math.rad(-90), 0) * CFrame.Angles(math.rad(-95), 0, math.rad(25))
 		end
 	end
 end
