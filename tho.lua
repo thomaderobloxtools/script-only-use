@@ -1,8 +1,9 @@
--- [ThoScript] BUILD: 2026-09-13 #16
--- - Fix pose Gojo: bỏ base Y(90), dùng X(90) trực tiếp để tay ra trước
--- - Fix pose Sukuna: 2 tay X(90) chéo nhẹ, chắp trước ngực
--- - Camera free/magic: thêm yaw/pitch từ mouse + touch, xoay tự do
-local SCRIPT_BUILD = "2026-09-13-#16"
+-- [ThoScript] BUILD: 2026-09-13 #17
+-- - Fix magic/freecam di chuyển dọc (bỏ flatten MD)
+-- - Fix freecam không xoay được (khai báo biến sớm)
+-- - Fix tia ESP pro chỉ vẽ trong viewport
+-- - Viền nút CAM xanh dương gradient nhiều màu
+local SCRIPT_BUILD = "2026-09-13-#17"
 local AUTORUN_URL = "https://raw.githubusercontent.com/thomaderobloxtools/script-only-use/main/tho.lua"
 
 repeat task.wait() until game:IsLoaded()
@@ -1135,7 +1136,14 @@ local function worldToViewport(pos)
 	local cam = workspace.CurrentCamera
 	if not cam then return Vector2.new(0, 0), false end
 	local sp, onScreen = cam:WorldToViewportPoint(pos)
-	return Vector2.new(sp.X, sp.Y), onScreen and sp.Z > 0
+	if not onScreen or sp.Z <= 0 then
+		return Vector2.new(sp.X, sp.Y), false
+	end
+	local vp = cam.ViewportSize
+	if sp.X < 0 or sp.X > vp.X or sp.Y < 0 or sp.Y > vp.Y then
+		return Vector2.new(sp.X, sp.Y), false
+	end
+	return Vector2.new(sp.X, sp.Y), true
 end
 
 local function createSkeleton(player)
@@ -1218,6 +1226,7 @@ local function updateSkeleton(player, targetCharacter)
 				l.line.Visible = false
 				l.head.Visible = false
 			end
+			if ESPPro.indicators[player] then ESPPro.indicators[player].Visible = false end
 			return
 		end
 	end
@@ -1234,6 +1243,7 @@ local function updateSkeleton(player, targetCharacter)
 			l.line.Visible = false
 			l.head.Visible = false
 		end
+		if ESPPro.indicators[player] then ESPPro.indicators[player].Visible = false end
 		return
 	end
 
@@ -1408,11 +1418,14 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 end)
 
+-- Camera helpers (khai báo sớm để dùng chung cho magic + free cam)
 local magicActive = false
 local magicSplit = false
+local freeCamActive = false
 local magicButton = nil
 local magicSavedWalk, magicSavedJump
 local magicRenderName = "ThoMagicCam"
+local freeCamRenderName = "ThoFreeCam"
 local camYaw = 0
 local camPitch = 0
 
@@ -1426,15 +1439,14 @@ local function getMoveInput()
 	local right = rot.RightVector
 	local move = Vector3.zero
 
-	local md = humanoid and humanoid.MoveDirection or Vector3.zero
-	if md.Magnitude > 0 then
-		local flatLook = Vector3.new(look.X, 0, look.Z)
-		local flatRight = Vector3.new(right.X, 0, right.Z)
-		if flatLook.Magnitude > 0 then flatLook = flatLook.Unit end
-		if flatRight.Magnitude > 0 then flatRight = flatRight.Unit end
-		local flatMd = Vector3.new(md.X, 0, md.Z)
-		if flatMd.Magnitude > 0 then flatMd = flatMd.Unit end
-		move += flatLook * flatMd:Dot(flatLook) + flatRight * flatMd:Dot(flatRight)
+	if humanoid then
+		local md = humanoid.MoveDirection
+		if md.Magnitude > 0 then
+			local u = md.Unit
+			local f = u:Dot(look)
+			local r = u:Dot(right)
+			move += look * f + right * r
+		end
 	end
 
 	if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += look end
@@ -1444,6 +1456,9 @@ local function getMoveInput()
 	if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move += Vector3.yAxis end
 	if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move -= Vector3.yAxis end
 
+	if move.Magnitude > 1 then
+		move = move.Unit
+	end
 	return move
 end
 
@@ -1451,10 +1466,10 @@ UserInputService.InputChanged:Connect(function(input)
 	if not (magicSplit or freeCamActive) then return end
 	if input.UserInputType == Enum.UserInputType.MouseMovement then
 		camYaw -= input.Delta.X * 0.4
-		camPitch = math.clamp(camPitch - input.Delta.Y * 0.4, -85, 85)
+		camPitch = math.clamp(camPitch - input.Delta.Y * 0.4, -89, 89)
 	elseif input.UserInputType == Enum.UserInputType.Touch then
 		camYaw -= input.Delta.X * 0.4
-		camPitch = math.clamp(camPitch - input.Delta.Y * 0.4, -85, 85)
+		camPitch = math.clamp(camPitch - input.Delta.Y * 0.4, -89, 89)
 	end
 end)
 
@@ -1510,8 +1525,6 @@ local function splitCamera()
 	if magicButton then
 		magicButton.Text = "TP"
 		magicButton.BackgroundColor3 = Color3.fromRGB(255, 100, 30)
-		local s = magicButton:FindFirstChildOfClass("UIStroke")
-		if s then s.Color = Color3.fromRGB(255, 200, 100) end
 	end
 end
 
@@ -1540,8 +1553,6 @@ local function mergeCamera()
 	if magicButton then
 		magicButton.Text = "CAM"
 		magicButton.BackgroundColor3 = Color3.fromRGB(150, 30, 200)
-		local s = magicButton:FindFirstChildOfClass("UIStroke")
-		if s then s.Color = Color3.fromRGB(255, 255, 255) end
 	end
 end
 
@@ -1586,7 +1597,17 @@ local function startMagicTeleport()
 	magicButton.ZIndex = 300
 	magicButton.Parent = ScreenGui
 	addCorner(magicButton, 100)
-	addStroke(magicButton, Color3.fromRGB(255, 255, 255), 0, 5)
+
+	local stroke = addStroke(magicButton, Color3.fromRGB(0, 170, 255), 0, 6)
+	local strokeGrad = Instance.new("UIGradient")
+	strokeGrad.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 170, 255)),
+		ColorSequenceKeypoint.new(0.25, Color3.fromRGB(0, 255, 200)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(100, 150, 255)),
+		ColorSequenceKeypoint.new(0.75, Color3.fromRGB(0, 255, 255)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 170, 255))
+	})
+	strokeGrad.Parent = stroke
 
 	local dragging = false
 	local dragOffset
@@ -1918,9 +1939,7 @@ createToggle(VisualPage, "Màn hình đen", "Che toàn màn hình màu đen (tre
 	blackOverlay.Visible = value
 end, 4)
 
-local freeCamActive = false
 local freeCamSavedWalk, freeCamSavedJump
-local freeCamRenderName = "ThoFreeCam"
 
 local function renderFreeCam(dt)
 	if not freeCamActive then return end
