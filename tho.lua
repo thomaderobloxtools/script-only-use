@@ -3,6 +3,7 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -18,7 +19,6 @@ local MUTED = Color3.fromRGB(145, 170, 200)
 local GREEN = Color3.fromRGB(40, 220, 140)
 local RED = Color3.fromRGB(255, 80, 95)
 
--- ĐÃ FIX: bỏ hoàn toàn DEV_ACCESS, cho phép chạy mọi nơi
 local old = PlayerGui:FindFirstChild(GUI_NAME)
 if old then
 	old:Destroy()
@@ -55,6 +55,7 @@ local function addText(parent, text, size, font, color)
 	label.Font = font or Enum.Font.Gotham
 	label.TextColor3 = color or WHITE
 	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Active = false          -- FIX: label không nuốt input
 	label.Parent = parent
 	return label
 end
@@ -67,7 +68,6 @@ ScreenGui.DisplayOrder = 999999
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = PlayerGui
 
--- ĐÃ FIX: thu nhỏ menu từ 850x540 -> 620x400
 local MAIN_WIDTH = 620
 local MAIN_HEIGHT = 400
 local MAIN_MIN_HEIGHT = 46
@@ -96,6 +96,7 @@ local Header = Instance.new("Frame")
 Header.Size = UDim2.new(1, 0, 0, MAIN_MIN_HEIGHT)
 Header.BackgroundColor3 = Color3.fromRGB(8, 30, 62)
 Header.BorderSizePixel = 0
+Header.Active = true          -- FIX: header bắt được input
 Header.Parent = Main
 
 local HeaderLine = Instance.new("Frame")
@@ -104,6 +105,7 @@ HeaderLine.Size = UDim2.new(1, 0, 0, 1)
 HeaderLine.BackgroundColor3 = BLUE_5
 HeaderLine.BackgroundTransparency = 0.65
 HeaderLine.BorderSizePixel = 0
+HeaderLine.Active = false
 HeaderLine.Parent = Header
 
 local MenuTitle = addText(Header, "Tho Script", 15, Enum.Font.GothamBold, WHITE)
@@ -119,6 +121,7 @@ HeaderButtons.AnchorPoint = Vector2.new(1, 0.5)
 HeaderButtons.Position = UDim2.new(1, -8, 0.5, 0)
 HeaderButtons.Size = UDim2.fromOffset(108, 28)
 HeaderButtons.BackgroundTransparency = 1
+HeaderButtons.Active = false  -- FIX: frame chứa nút không nuốt input của header
 HeaderButtons.Parent = Header
 
 local HeaderLayout = Instance.new("UIListLayout")
@@ -207,6 +210,7 @@ local function createTab(name, order)
 	accent.BackgroundColor3 = BLUE_5
 	accent.BackgroundTransparency = name == "Player" and 0 or 1
 	accent.BorderSizePixel = 0
+	accent.Active = false
 	accent.Parent = button
 	addCorner(accent, 4)
 
@@ -306,6 +310,7 @@ local function showNotice(text, success)
 	notice.BackgroundColor3 = success and Color3.fromRGB(10, 67, 59) or Color3.fromRGB(67, 29, 39)
 	notice.BorderSizePixel = 0
 	notice.ZIndex = 200
+	notice.Active = false
 	notice.Parent = Main
 	addCorner(notice, 8)
 	addStroke(notice, success and GREEN or RED, 0.55, 1)
@@ -332,6 +337,7 @@ local function createSection(parent, title, order)
 	f.LayoutOrder = order
 	f.Size = UDim2.new(1, 0, 0, 28)
 	f.BackgroundTransparency = 1
+	f.Active = false
 	f.Parent = parent
 
 	local t = addText(f, title, 15, Enum.Font.GothamBold, WHITE)
@@ -342,6 +348,7 @@ local function createSection(parent, title, order)
 	line.Size = UDim2.new(1, 0, 0, 1)
 	line.BackgroundColor3 = BLUE_3
 	line.BorderSizePixel = 0
+	line.Active = false
 	line.Parent = f
 end
 
@@ -383,6 +390,7 @@ local function createToggle(parent, title, description, defaultValue, callback, 
 	knob.Size = UDim2.fromOffset(16, 16)
 	knob.BackgroundColor3 = Color3.fromRGB(180, 200, 220)
 	knob.BorderSizePixel = 0
+	knob.Active = false
 	knob.Parent = track
 	addCorner(knob, 20)
 
@@ -490,6 +498,21 @@ local function createButton(parent, title, description, callback, order)
 	end)
 end
 
+-- FIX: slider giờ dùng chung 1 connection toàn cục, kéo mượt
+local activeSlider = nil
+
+UserInputService.InputChanged:Connect(function(input)
+	if activeSlider and input.UserInputType == Enum.UserInputType.MouseMovement then
+		activeSlider(input.Position.X)
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		activeSlider = nil
+	end
+end)
+
 local function createSlider(parent, title, description, minValue, maxValue, defaultValue, callback, order)
 	local row = Instance.new("Frame")
 	row.LayoutOrder = order
@@ -515,11 +538,15 @@ local function createSlider(parent, title, description, minValue, maxValue, defa
 	descLabel.Size = UDim2.new(1, -24, 0, 18)
 	descLabel.TextWrapped = true
 
-	local bar = Instance.new("Frame")
+	-- FIX: bar giờ là TextButton để nhận input, và Active = true
+	local bar = Instance.new("TextButton")
 	bar.Position = UDim2.new(0, 12, 1, -20)
 	bar.Size = UDim2.new(1, -24, 0, 6)
 	bar.BackgroundColor3 = Color3.fromRGB(26, 48, 78)
 	bar.BorderSizePixel = 0
+	bar.Text = ""
+	bar.AutoButtonColor = false
+	bar.Active = true
 	bar.Parent = row
 	addCorner(bar, 10)
 
@@ -527,6 +554,7 @@ local function createSlider(parent, title, description, minValue, maxValue, defa
 	fill.Size = UDim2.new(0, 0, 1, 0)
 	fill.BackgroundColor3 = BLUE_5
 	fill.BorderSizePixel = 0
+	fill.Active = false
 	fill.Parent = bar
 	addCorner(fill, 10)
 
@@ -537,15 +565,16 @@ local function createSlider(parent, title, description, minValue, maxValue, defa
 	knob.BackgroundColor3 = WHITE
 	knob.BorderSizePixel = 0
 	knob.ZIndex = 3
+	knob.Active = false
 	knob.Parent = bar
 	addCorner(knob, 10)
 
-	local dragging = false
 	local currentValue = defaultValue
 
 	local function apply(x)
 		local startX = bar.AbsolutePosition.X
 		local width = bar.AbsoluteSize.X
+		if width <= 0 then return end
 		local alpha = math.clamp((x - startX) / width, 0, 1)
 		currentValue = math.floor(minValue + (maxValue - minValue) * alpha + 0.5)
 
@@ -562,22 +591,11 @@ local function createSlider(parent, title, description, minValue, maxValue, defa
 	fill.Size = UDim2.new(initialAlpha, 0, 1, 0)
 	knob.Position = UDim2.new(initialAlpha, 0, 0.5, 0)
 
+	-- FIX: dùng InputBegan của bar (TextButton) để bắt đầu kéo
 	bar.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			dragging = true
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			activeSlider = apply
 			apply(input.Position.X)
-		end
-	end)
-
-	UserInputService.InputChanged:Connect(function(input)
-		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-			apply(input.Position.X)
-		end
-	end)
-
-	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			dragging = false
 		end
 	end)
 
@@ -635,9 +653,9 @@ LocalPlayer.CharacterAdded:Connect(function(char)
 	root = char:WaitForChild("HumanoidRootPart", 5)
 end)
 
-local flyVelocity
-local flyOrientation
-local flyAttachment
+-- FIX: Fly dùng BodyVelocity + BodyGyro để chắc chắn hoạt động
+local flyBV
+local flyBG
 local flyConnection
 
 local function stopFly()
@@ -648,23 +666,13 @@ local function stopFly()
 		flyConnection = nil
 	end
 
-	if flyVelocity then
-		flyVelocity:Destroy()
-		flyVelocity = nil
-	end
+	if flyBV then flyBV:Destroy() flyBV = nil end
+	if flyBG then flyBG:Destroy() flyBG = nil end
 
-	if flyOrientation then
-		flyOrientation:Destroy()
-		flyOrientation = nil
-	end
-
-	if flyAttachment then
-		flyAttachment:Destroy()
-		flyAttachment = nil
-	end
-
+	refreshCharacter()
 	if humanoid then
 		humanoid.PlatformStand = false
+		humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
 	end
 end
 
@@ -672,31 +680,30 @@ local function startFly()
 	refreshCharacter()
 
 	if not humanoid or not root then
+		showNotice("Không tìm thấy nhân vật.", false)
+		State.fly = false
 		return
 	end
 
-	flyAttachment = Instance.new("Attachment")
-	flyAttachment.Name = "_ThoFlyAttachment"
-	flyAttachment.Parent = root
-
-	flyVelocity = Instance.new("LinearVelocity")
-	flyVelocity.Attachment0 = flyAttachment
-	flyVelocity.RelativeTo = Enum.ActuatorRelativeTo.World
-	flyVelocity.MaxForce = math.huge
-	flyVelocity.VectorVelocity = Vector3.zero
-	flyVelocity.Parent = root
-
-	flyOrientation = Instance.new("AlignOrientation")
-	flyOrientation.Attachment0 = flyAttachment
-	flyOrientation.Mode = Enum.OrientationAlignmentMode.OneAttachment
-	flyOrientation.MaxTorque = math.huge
-	flyOrientation.Responsiveness = 30
-	flyOrientation.Parent = root
-
 	humanoid.PlatformStand = true
 
+	flyBV = Instance.new("BodyVelocity")
+	flyBV.Name = "_ThoFlyBV"
+	flyBV.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+	flyBV.Velocity = Vector3.zero
+	flyBV.P = 1250
+	flyBV.Parent = root
+
+	flyBG = Instance.new("BodyGyro")
+	flyBG.Name = "_ThoFlyBG"
+	flyBG.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
+	flyBG.P = 1000
+	flyBG.D = 50
+	flyBG.CFrame = root.CFrame
+	flyBG.Parent = root
+
 	flyConnection = RunService.RenderStepped:Connect(function()
-		if not State.fly or not root or not root.Parent then
+		if not State.fly or not root or not root.Parent or not flyBV or not flyBG then
 			return
 		end
 
@@ -726,8 +733,8 @@ local function startFly()
 			move = move.Unit
 		end
 
-		flyVelocity.VectorVelocity = move * State.flySpeed
-		flyOrientation.CFrame = CFrame.lookAt(Vector3.zero, camera.CFrame.LookVector)
+		flyBV.Velocity = move * State.flySpeed
+		flyBG.CFrame = CFrame.new(root.Position, root.Position + camera.CFrame.LookVector)
 	end)
 end
 
@@ -866,7 +873,9 @@ createToggle(PlayerPage, "Đi xuyên tường", "Tắt collision của nhân v�
 	end
 end, 9)
 
+-- FIX: lying dùng PlatformStand để không bị văng khi spam space
 local lyingConnection
+local originalAutoRotate = true
 
 local function stopLying()
 	State.lying = false
@@ -876,7 +885,9 @@ local function stopLying()
 	end
 	refreshCharacter()
 	if humanoid then
-		humanoid.AutoRotate = true
+		humanoid.AutoRotate = originalAutoRotate
+		humanoid.PlatformStand = false
+		humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
 	end
 end
 
@@ -884,7 +895,10 @@ local function startLying()
 	refreshCharacter()
 	if not humanoid or not root then return end
 
+	originalAutoRotate = humanoid.AutoRotate
 	humanoid.AutoRotate = false
+	humanoid.PlatformStand = true
+
 	lyingConnection = RunService.RenderStepped:Connect(function()
 		if State.lying and root and root.Parent then
 			local p = root.Position
@@ -894,7 +908,7 @@ local function startLying()
 	end)
 end
 
-createToggle(PlayerPage, "Nằm", "Đưa nhân vật về tư thế nằm.", false, function(value)
+createToggle(PlayerPage, "Nằm", "Đưa nhân vật về tư thế nằm (an toàn, không bị văng).", false, function(value)
 	State.lying = value
 	if value then
 		startLying()
@@ -1079,12 +1093,98 @@ end, 14)
 
 createSection(ServerPage, "Server", 1)
 
-createButton(ServerPage, "Đổi máy chủ", "Giao diện dành cho server browser.", function()
-	showNotice("Server hop cần hệ thống chọn instance của experience.", false)
+-- FIX: implement server hop thật bằng HttpService
+local function fetchServers(placeId, callback)
+	task.spawn(function()
+		local url = string.format(
+			"https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100",
+			placeId
+		)
+		local ok, result = pcall(function()
+			return HttpService:JSONDecode(game:HttpGet(url))
+		end)
+		if ok and result and result.data then
+			callback(result.data)
+		else
+			callback(nil)
+		end
+	end)
+end
+
+local function hopToServer(targetJobId)
+	local ok, err = pcall(function()
+		TeleportService:TeleportToPlaceInstance(game.PlaceId, targetJobId, LocalPlayer)
+	end)
+	if not ok then
+		showNotice("Teleport thất bại: " .. tostring(err), false)
+	end
+end
+
+createButton(ServerPage, "Đổi máy chủ", "Nhảy sang một server khác cùng place.", function()
+	local servers = nil
+	fetchServers(game.PlaceId, function(data)
+		servers = data
+	end)
+
+	task.wait(1.5)
+
+	if not servers or #servers == 0 then
+		showNotice("Không lấy được danh sách server.", false)
+		return
+	end
+
+	local currentJob = game.JobId
+	local candidates = {}
+	for _, s in ipairs(servers) do
+		if s.id ~= currentJob and (s.playing or 0) < (s.maxPlayers or 999) then
+			table.insert(candidates, s)
+		end
+	end
+
+	if #candidates == 0 then
+		showNotice("Không có server nào khả dụng.", false)
+		return
+	end
+
+	local pick = candidates[math.random(1, #candidates)]
+	showNotice("Đang chuyển server...", true)
+	task.wait(0.4)
+	hopToServer(pick.id)
 end, 2)
 
-createButton(ServerPage, "Đổi máy chủ ít người", "Giao diện dành cho hệ thống tìm instance ít người.", function()
-	showNotice("Cần server browser/API của experience để chọn instance.", false)
+createButton(ServerPage, "Đổi máy chủ ít người", "Tìm server có ít người chơi nhất.", function()
+	local servers = nil
+	fetchServers(game.PlaceId, function(data)
+		servers = data
+	end)
+
+	task.wait(1.5)
+
+	if not servers or #servers == 0 then
+		showNotice("Không lấy được danh sách server.", false)
+		return
+	end
+
+	local currentJob = game.JobId
+	local best = nil
+	local bestCount = math.huge
+
+	for _, s in ipairs(servers) do
+		local count = s.playing or 0
+		if s.id ~= currentJob and count < bestCount and count < (s.maxPlayers or 999) then
+			best = s
+			bestCount = count
+		end
+	end
+
+	if not best then
+		showNotice("Không có server nào khả dụng.", false)
+		return
+	end
+
+	showNotice("Đang chuyển tới server " .. bestCount .. " người...", true)
+	task.wait(0.4)
+	hopToServer(best.id)
 end, 3)
 
 createButton(ServerPage, "Tham gia lại máy chủ", "Thử quay lại đúng JobId của instance hiện tại.", function()
@@ -1107,10 +1207,10 @@ createToggle(ServerPage, "Tự động chạy script", "Lưu trạng thái giao 
 	showNotice(value and "Đã bật tự động khôi phục trạng thái." or "Đã tắt tự động khôi phục.", true)
 end, 5)
 
--- ĐÃ FIX: Nút T giờ toggle thực sự (bấm lần 1 ẩn menu, bấm lần 2 hiện lại)
+-- FIX: FloatingButton nằm cao hơn, DisplayOrder riêng cao hơn Main
 local FloatingButton = Instance.new("TextButton")
 FloatingButton.AnchorPoint = Vector2.new(1, 1)
-FloatingButton.Position = UDim2.new(1, -18, 1, -18)
+FloatingButton.Position = UDim2.new(1, -20, 1, -120)   -- FIX: nâng lên để không bị CoreGui che
 FloatingButton.Size = UDim2.fromOffset(46, 46)
 FloatingButton.BackgroundColor3 = BLUE_4
 FloatingButton.BorderSizePixel = 0
@@ -1119,8 +1219,8 @@ FloatingButton.TextSize = 18
 FloatingButton.Font = Enum.Font.GothamBold
 FloatingButton.TextColor3 = WHITE
 FloatingButton.AutoButtonColor = false
-FloatingButton.Visible = false -- ĐÃ FIX: ban đầu ẩn vì menu đang mở
-FloatingButton.ZIndex = 300
+FloatingButton.Visible = false
+FloatingButton.ZIndex = 5000
 FloatingButton.Parent = ScreenGui
 addCorner(FloatingButton, 100)
 addStroke(FloatingButton, BLUE_5, 0.25, 1)
@@ -1132,6 +1232,7 @@ FloatingGlow.Size = UDim2.fromScale(0.72, 0.72)
 FloatingGlow.BackgroundColor3 = BLUE_5
 FloatingGlow.BackgroundTransparency = 0.83
 FloatingGlow.BorderSizePixel = 0
+FloatingGlow.Active = false
 FloatingGlow.Parent = FloatingButton
 addCorner(FloatingGlow, 100)
 
@@ -1152,8 +1253,6 @@ end)
 local originalSize = UDim2.fromOffset(MAIN_WIDTH, MAIN_HEIGHT)
 local minimized = false
 local maximized = false
-
--- ĐÃ FIX: dùng 1 biến trạng thái duy nhất, toggle rõ ràng
 local menuOpen = true
 
 local function setMenuVisible(value)
@@ -1204,20 +1303,28 @@ CloseButton.Activated:Connect(function()
 	setMenuVisible(false)
 end)
 
+-- FIX: dragging menu dùng UserInputService thay vì Header.InputBegan
 local dragging = false
 local dragStart
 local startPosition
 
-Header.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+local function beginDrag(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
 		dragging = true
 		dragStart = input.Position
 		startPosition = Main.Position
 	end
-end)
+end
+
+Header.InputBegan:Connect(beginDrag)
+MenuTitle.InputBegan:Connect(beginDrag)
+MenuSubtitle.InputBegan:Connect(beginDrag)
+HeaderLine.InputBegan:Connect(beginDrag)
 
 UserInputService.InputChanged:Connect(function(input)
-	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch) then
 		local delta = input.Position - dragStart
 		Main.Position = UDim2.new(
 			startPosition.X.Scale,
@@ -1229,7 +1336,8 @@ UserInputService.InputChanged:Connect(function(input)
 end)
 
 UserInputService.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
 		dragging = false
 	end
 end)
@@ -1238,7 +1346,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
 
 	if input.KeyCode == Enum.KeyCode.RightShift then
-		-- ĐÃ FIX: toggle thực sự giữa ẩn/hiện
 		setMenuVisible(not menuOpen)
 	end
 end)
