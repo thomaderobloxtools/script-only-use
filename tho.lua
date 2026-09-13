@@ -1,10 +1,8 @@
--- [ThoScript] BUILD: 2026-09-13 #15
--- - Fix pose Gojo: nhân thêm rotation -90 X vào base C0 (tay ra trước)
--- - Fix pose Sukuna: 2 tay nhân -90 X, chếch vào trong
--- - Fix skeleton ESP: dùng BindToRenderStep khớp camera
--- - Thêm tia chỉ hướng từ ô top tới từng player
--- - Viền nút CAM dày, màu trắng đậm
-local SCRIPT_BUILD = "2026-09-13-#15"
+-- [ThoScript] BUILD: 2026-09-13 #16
+-- - Fix pose Gojo: bỏ base Y(90), dùng X(90) trực tiếp để tay ra trước
+-- - Fix pose Sukuna: 2 tay X(90) chéo nhẹ, chắp trước ngực
+-- - Camera free/magic: thêm yaw/pitch từ mouse + touch, xoay tự do
+local SCRIPT_BUILD = "2026-09-13-#16"
 local AUTORUN_URL = "https://raw.githubusercontent.com/thomaderobloxtools/script-only-use/main/tho.lua"
 
 repeat task.wait() until game:IsLoaded()
@@ -1415,40 +1413,50 @@ local magicSplit = false
 local magicButton = nil
 local magicSavedWalk, magicSavedJump
 local magicRenderName = "ThoMagicCam"
+local camYaw = 0
+local camPitch = 0
 
-local function getMoveInput(cam)
+local function getCamRot()
+	return CFrame.fromEulerAnglesYXZ(math.rad(camPitch), math.rad(camYaw), 0)
+end
+
+local function getMoveInput()
+	local rot = getCamRot()
+	local look = rot.LookVector
+	local right = rot.RightVector
 	local move = Vector3.zero
-	local md = humanoid and humanoid.MoveDirection or Vector3.zero
 
+	local md = humanoid and humanoid.MoveDirection or Vector3.zero
 	if md.Magnitude > 0 then
-		local look = cam.CFrame.LookVector
-		local right = cam.CFrame.RightVector
 		local flatLook = Vector3.new(look.X, 0, look.Z)
 		local flatRight = Vector3.new(right.X, 0, right.Z)
 		if flatLook.Magnitude > 0 then flatLook = flatLook.Unit end
 		if flatRight.Magnitude > 0 then flatRight = flatRight.Unit end
-
 		local flatMd = Vector3.new(md.X, 0, md.Z)
 		if flatMd.Magnitude > 0 then flatMd = flatMd.Unit end
-
-		local f = flatMd:Dot(flatLook)
-		local r = flatMd:Dot(flatRight)
-
-		move = cam.CFrame.LookVector * f + cam.CFrame.RightVector * r
+		move += flatLook * flatMd:Dot(flatLook) + flatRight * flatMd:Dot(flatRight)
 	end
 
-	if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += cam.CFrame.LookVector end
-	if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= cam.CFrame.LookVector end
-	if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += cam.CFrame.RightVector end
-	if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= cam.CFrame.RightVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += look end
+	if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= look end
+	if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += right end
+	if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= right end
 	if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move += Vector3.yAxis end
 	if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move -= Vector3.yAxis end
 
-	if move.Magnitude > 0 then
-		move = move.Unit
-	end
 	return move
 end
+
+UserInputService.InputChanged:Connect(function(input)
+	if not (magicSplit or freeCamActive) then return end
+	if input.UserInputType == Enum.UserInputType.MouseMovement then
+		camYaw -= input.Delta.X * 0.4
+		camPitch = math.clamp(camPitch - input.Delta.Y * 0.4, -85, 85)
+	elseif input.UserInputType == Enum.UserInputType.Touch then
+		camYaw -= input.Delta.X * 0.4
+		camPitch = math.clamp(camPitch - input.Delta.Y * 0.4, -85, 85)
+	end
+end)
 
 local function startMagicMode()
 	refreshCharacter()
@@ -1477,10 +1485,11 @@ local function renderMagic(dt)
 	if not cam then return end
 	cam.CameraType = Enum.CameraType.Scriptable
 
-	local move = getMoveInput(cam)
+	local rot = getCamRot()
+	local move = getMoveInput()
 	local speed = 80
 	local newPos = cam.CFrame.Position + move * speed * dt
-	cam.CFrame = CFrame.new(newPos, newPos + cam.CFrame.LookVector)
+	cam.CFrame = CFrame.new(newPos) * rot
 end
 
 local function splitCamera()
@@ -1488,6 +1497,10 @@ local function splitCamera()
 	if not cam then return end
 	magicSplit = true
 	cam.CameraType = Enum.CameraType.Scriptable
+
+	local look = cam.CFrame.LookVector
+	camYaw = math.deg(math.atan2(-look.X, -look.Z))
+	camPitch = math.deg(math.asin(math.clamp(look.Y, -1, 1)))
 
 	pcall(function()
 		RunService:UnbindFromRenderStep(magicRenderName)
@@ -1619,7 +1632,7 @@ local function startMagicTeleport()
 end
 
 local magicToggle
-magicToggle = createToggle(PlayerPage, "Dịch chuyển ảo thuật", "Bấm CAM để tách camera, bấm TP để teleport về camera.", false, function(value)
+magicToggle = createToggle(PlayerPage, "Dịch chuyển ảo thuật", "Bấm CAM để tách camera, bấm TP để teleport về camera. Chuột/ngón để xoay.", false, function(value)
 	if value then
 		startMagicTeleport()
 	else
@@ -1915,13 +1928,12 @@ local function renderFreeCam(dt)
 	if not cam then return end
 	cam.CameraType = Enum.CameraType.Scriptable
 
-	local move = getMoveInput(cam)
+	local rot = getCamRot()
+	local move = getMoveInput()
 	local speed = 80
 	if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then speed = 250 end
-	if move.Magnitude > 0 then
-		local newPos = cam.CFrame.Position + move * speed * dt
-		cam.CFrame = CFrame.new(newPos, newPos + cam.CFrame.LookVector)
-	end
+	local newPos = cam.CFrame.Position + move * speed * dt
+	cam.CFrame = CFrame.new(newPos) * rot
 end
 
 local function stopFreeCam()
@@ -1958,13 +1970,17 @@ local function startFreeCam()
 	freeCamActive = true
 	cam.CameraType = Enum.CameraType.Scriptable
 
+	local look = cam.CFrame.LookVector
+	camYaw = math.deg(math.atan2(-look.X, -look.Z))
+	camPitch = math.deg(math.asin(math.clamp(look.Y, -1, 1)))
+
 	pcall(function()
 		RunService:UnbindFromRenderStep(freeCamRenderName)
 	end)
 	RunService:BindToRenderStep(freeCamRenderName, Enum.RenderPriority.Camera.Value + 10, renderFreeCam)
 end
 
-createToggle(VisualPage, "Xem từ xa", "Nhân vật đứng yên, camera bay như drone (WASD + Space/Ctrl + Shift).", false, function(value)
+createToggle(VisualPage, "Xem từ xa", "Nhân vật đứng yên, camera bay tự do (WASD + Space/Ctrl + Shift + chuột/ngón để xoay).", false, function(value)
 	if value then startFreeCam() else stopFreeCam() end
 end, 5)
 
@@ -2028,15 +2044,15 @@ local function applyPoseMotor(m, poseId)
 
 	if poseId == "void" then
 		if isRight then
-			m.C0 = CFrame.new(1, 0.5, 0) * CFrame.Angles(0, math.rad(90), 0) * CFrame.Angles(math.rad(-95), 0, math.rad(-15))
+			m.C0 = CFrame.new(1, 0.5, -0.3) * CFrame.Angles(math.rad(90), 0, 0)
 		elseif isLeft then
 			m.C0 = CFrame.new(-1, 0.5, 0) * CFrame.Angles(0, math.rad(-90), 0)
 		end
 	elseif poseId == "shrine" then
 		if isRight then
-			m.C0 = CFrame.new(1, 0.5, 0) * CFrame.Angles(0, math.rad(90), 0) * CFrame.Angles(math.rad(-95), 0, math.rad(-25))
+			m.C0 = CFrame.new(0.9, 0.5, -0.5) * CFrame.Angles(math.rad(90), math.rad(-15), 0)
 		elseif isLeft then
-			m.C0 = CFrame.new(-1, 0.5, 0) * CFrame.Angles(0, math.rad(-90), 0) * CFrame.Angles(math.rad(-95), 0, math.rad(25))
+			m.C0 = CFrame.new(-0.9, 0.5, -0.5) * CFrame.Angles(math.rad(90), math.rad(15), 0)
 		end
 	end
 end
@@ -2093,7 +2109,7 @@ createButton(VisualPage, "Vô Lượng Không Xứ", "Tay phải giơ ra trướ
 	showNotice("Đã kích hoạt Vô Lượng Không Xứ", true)
 end, 7)
 
-createButton(VisualPage, "Phục Ma Ngự Trù Tử", "Hai tay chấp trước ngực (Sukuna) + nhạc.", function()
+createButton(VisualPage, "Phục Ma Ngự Trù Tử", "Hai tay chắp trước ngực (Sukuna) + nhạc.", function()
 	applyPose("shrine")
 	showNotice("Đã kích hoạt Phục Ma Ngự Trù Tử", true)
 end, 8)
