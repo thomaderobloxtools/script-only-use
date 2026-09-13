@@ -1,9 +1,10 @@
--- [ThoScript] BUILD: 2026-09-13 #13
--- - Magic teleport: lock nhân vật, nút 👁/⚡ đổi chức năng, cam về nhân vật khi teleport
--- - Xem từ xa: lock nhân vật, camera bay tự do kiểu drone
--- - Pose: Gojo tay ra trước, Sukuna 2 tay chấp trước ngực
--- - Đổi sound Sukuna thành 6590147536
-local SCRIPT_BUILD = "2026-09-13-#13"
+-- [ThoScript] BUILD: 2026-09-13 #14
+-- - Fix camera dùng BindToRenderStep (magic + freecam hoạt động đúng)
+-- - Fix pose Gojo: tay phải ra trước mặt
+-- - Fix pose Sukuna: 2 tay chấp trước ngực
+-- - Đổi emoji nút thành chữ CAM/TP
+-- - Thêm fallback mobile cho camera
+local SCRIPT_BUILD = "2026-09-13-#14"
 local AUTORUN_URL = "https://raw.githubusercontent.com/thomaderobloxtools/script-only-use/main/tho.lua"
 
 repeat task.wait() until game:IsLoaded()
@@ -1203,11 +1204,7 @@ local function updateSkeleton(player, targetCharacter)
 		LeftArm = targetCharacter:FindFirstChild("LeftUpperArm") or targetCharacter:FindFirstChild("Left Arm"),
 		RightArm = targetCharacter:FindFirstChild("RightUpperArm") or targetCharacter:FindFirstChild("Right Arm"),
 		LeftLeg = targetCharacter:FindFirstChild("LeftUpperLeg") or targetCharacter:FindFirstChild("Left Leg"),
-		RightLeg = targetCharacter:FindFirstChild("RightUpperLeg") or targetCharacter:FindFirstChild("Right Leg"),
-		LeftHand = targetCharacter:FindFirstChild("LeftHand") or targetCharacter:FindFirstChild("Left Arm"),
-		RightHand = targetCharacter:FindFirstChild("RightHand") or targetCharacter:FindFirstChild("Right Arm"),
-		LeftFoot = targetCharacter:FindFirstChild("LeftFoot") or targetCharacter:FindFirstChild("Left Leg"),
-		RightFoot = targetCharacter:FindFirstChild("RightFoot") or targetCharacter:FindFirstChild("Right Leg")
+		RightLeg = targetCharacter:FindFirstChild("RightUpperLeg") or targetCharacter:FindFirstChild("Right Leg")
 	}
 
 	for _, p in pairs(parts) do
@@ -1382,9 +1379,43 @@ end)
 
 local magicActive = false
 local magicSplit = false
-local magicConnection = nil
 local magicButton = nil
 local magicSavedWalk, magicSavedJump
+local magicRenderName = "ThoMagicCam"
+
+local function getMoveInput(cam)
+	local move = Vector3.zero
+	local md = humanoid and humanoid.MoveDirection or Vector3.zero
+
+	if md.Magnitude > 0 then
+		local look = cam.CFrame.LookVector
+		local right = cam.CFrame.RightVector
+		local flatLook = Vector3.new(look.X, 0, look.Z)
+		local flatRight = Vector3.new(right.X, 0, right.Z)
+		if flatLook.Magnitude > 0 then flatLook = flatLook.Unit end
+		if flatRight.Magnitude > 0 then flatRight = flatRight.Unit end
+
+		local flatMd = Vector3.new(md.X, 0, md.Z)
+		if flatMd.Magnitude > 0 then flatMd = flatMd.Unit end
+
+		local f = flatMd:Dot(flatLook)
+		local r = flatMd:Dot(flatRight)
+
+		move = cam.CFrame.LookVector * f + cam.CFrame.RightVector * r
+	end
+
+	if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += cam.CFrame.LookVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= cam.CFrame.LookVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += cam.CFrame.RightVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= cam.CFrame.RightVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move += Vector3.yAxis end
+	if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move -= Vector3.yAxis end
+
+	if move.Magnitude > 0 then
+		move = move.Unit
+	end
+	return move
+end
 
 local function startMagicMode()
 	refreshCharacter()
@@ -1407,33 +1438,32 @@ local function endMagicMode()
 	end
 end
 
+local function renderMagic(dt)
+	if not magicSplit then return end
+	local cam = workspace.CurrentCamera
+	if not cam then return end
+	cam.CameraType = Enum.CameraType.Scriptable
+
+	local move = getMoveInput(cam)
+	local speed = 80
+	local newPos = cam.CFrame.Position + move * speed * dt
+	cam.CFrame = CFrame.new(newPos, newPos + cam.CFrame.LookVector)
+end
+
 local function splitCamera()
 	local cam = workspace.CurrentCamera
 	if not cam then return end
 	magicSplit = true
 	cam.CameraType = Enum.CameraType.Scriptable
 
-	if magicConnection then magicConnection:Disconnect() end
-	magicConnection = RunService.RenderStepped:Connect(function(dt)
-		if not magicSplit then return end
-		local c = workspace.CurrentCamera
-		if not c then return end
-		local move = Vector3.zero
-		if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += c.CFrame.LookVector end
-		if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= c.CFrame.LookVector end
-		if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += c.CFrame.RightVector end
-		if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= c.CFrame.RightVector end
-		local vert = 0
-		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then vert = 1 end
-		if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then vert = -1 end
-		local vel = move + Vector3.yAxis * vert
-		if vel.Magnitude > 0 then vel = vel.Unit * 80 end
-		local newPos = c.CFrame.Position + vel * dt
-		c.CFrame = CFrame.new(newPos, newPos + c.CFrame.LookVector)
+	pcall(function()
+		RunService:UnbindFromRenderStep(magicRenderName)
 	end)
+	RunService:BindToRenderStep(magicRenderName, Enum.RenderPriority.Camera.Value + 10, renderMagic)
 
 	if magicButton then
-		magicButton.Text = "⚡"
+		magicButton.Text = "TP"
+		magicButton.BackgroundColor3 = Color3.fromRGB(255, 100, 30)
 	end
 end
 
@@ -1442,9 +1472,13 @@ local function mergeCamera()
 	if not cam then return end
 	local camPos = cam.CFrame.Position
 
+	pcall(function()
+		RunService:UnbindFromRenderStep(magicRenderName)
+	end)
+
 	refreshCharacter()
 	if root then
-		root.CFrame = CFrame.new(camPos)
+		root.CFrame = CFrame.new(camPos + Vector3.new(0, 3, 0))
 	end
 
 	cam.CameraType = Enum.CameraType.Custom
@@ -1454,23 +1488,21 @@ local function mergeCamera()
 	end
 
 	magicSplit = false
-	if magicConnection then
-		magicConnection:Disconnect()
-		magicConnection = nil
-	end
 
 	if magicButton then
-		magicButton.Text = "👁"
+		magicButton.Text = "CAM"
+		magicButton.BackgroundColor3 = Color3.fromRGB(150, 30, 200)
 	end
 end
 
 local function stopMagicTeleport()
 	magicActive = false
 	magicSplit = false
-	if magicConnection then
-		magicConnection:Disconnect()
-		magicConnection = nil
-	end
+
+	pcall(function()
+		RunService:UnbindFromRenderStep(magicRenderName)
+	end)
+
 	if magicButton then
 		magicButton:Destroy()
 		magicButton = nil
@@ -1492,19 +1524,19 @@ local function startMagicTeleport()
 	magicActive = true
 
 	magicButton = Instance.new("TextButton")
-	magicButton.Size = UDim2.fromOffset(60, 60)
-	magicButton.Position = UDim2.new(0, 30, 0.5, -30)
+	magicButton.Size = UDim2.fromOffset(64, 64)
+	magicButton.Position = UDim2.new(0, 30, 0.5, -32)
 	magicButton.BackgroundColor3 = Color3.fromRGB(150, 30, 200)
 	magicButton.BorderSizePixel = 0
-	magicButton.Text = "👁"
-	magicButton.TextSize = 26
+	magicButton.Text = "CAM"
+	magicButton.TextSize = 16
 	magicButton.TextColor3 = WHITE
 	magicButton.Font = Enum.Font.GothamBold
 	magicButton.AutoButtonColor = false
 	magicButton.ZIndex = 300
 	magicButton.Parent = ScreenGui
 	addCorner(magicButton, 100)
-	addStroke(magicButton, Color3.fromRGB(255, 200, 255), 0, 4)
+	addStroke(magicButton, Color3.fromRGB(255, 220, 255), 0, 4)
 
 	local dragging = false
 	local dragOffset
@@ -1525,7 +1557,7 @@ local function startMagicTeleport()
 		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
 			or input.UserInputType == Enum.UserInputType.Touch) then
 			local newPos = Vector2.new(input.Position.X, input.Position.Y) - dragOffset
-			if (newPos - magicButton.AbsolutePosition).Magnitude > 5 then
+			if (newPos - magicButton.AbsolutePosition).Magnitude > 8 then
 				moved = true
 			end
 			magicButton.Position = UDim2.fromOffset(newPos.X, newPos.Y)
@@ -1550,7 +1582,7 @@ local function startMagicTeleport()
 end
 
 local magicToggle
-magicToggle = createToggle(PlayerPage, "Dịch chuyển ảo thuật", "Bấm nút 👁 để tách camera, bấm ⚡ để teleport và cam về nhân vật.", false, function(value)
+magicToggle = createToggle(PlayerPage, "Dịch chuyển ảo thuật", "Bấm CAM để tách camera, bấm TP để teleport về camera.", false, function(value)
 	if value then
 		startMagicTeleport()
 	else
@@ -1837,15 +1869,29 @@ createToggle(VisualPage, "Màn hình đen", "Che toàn màn hình màu đen (tre
 end, 4)
 
 local freeCamActive = false
-local freeCamConnection = nil
 local freeCamSavedWalk, freeCamSavedJump
+local freeCamRenderName = "ThoFreeCam"
+
+local function renderFreeCam(dt)
+	if not freeCamActive then return end
+	local cam = workspace.CurrentCamera
+	if not cam then return end
+	cam.CameraType = Enum.CameraType.Scriptable
+
+	local move = getMoveInput(cam)
+	local speed = 80
+	if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then speed = 250 end
+	if move.Magnitude > 0 then
+		local newPos = cam.CFrame.Position + move * speed * dt
+		cam.CFrame = CFrame.new(newPos, newPos + cam.CFrame.LookVector)
+	end
+end
 
 local function stopFreeCam()
 	freeCamActive = false
-	if freeCamConnection then
-		freeCamConnection:Disconnect()
-		freeCamConnection = nil
-	end
+	pcall(function()
+		RunService:UnbindFromRenderStep(freeCamRenderName)
+	end)
 	refreshCharacter()
 	if humanoid then
 		humanoid.WalkSpeed = freeCamSavedWalk or 16
@@ -1875,23 +1921,10 @@ local function startFreeCam()
 	freeCamActive = true
 	cam.CameraType = Enum.CameraType.Scriptable
 
-	freeCamConnection = RunService.RenderStepped:Connect(function(dt)
-		if not freeCamActive then return end
-		local c = workspace.CurrentCamera
-		if not c then return end
-		local move = Vector3.zero
-		if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += c.CFrame.LookVector end
-		if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= c.CFrame.LookVector end
-		if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += c.CFrame.RightVector end
-		if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= c.CFrame.RightVector end
-		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move += Vector3.yAxis end
-		if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move -= Vector3.yAxis end
-		local speed = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and 200 or 80
-		if move.Magnitude > 0 then
-			local newPos = c.CFrame.Position + move.Unit * speed * dt
-			c.CFrame = CFrame.new(newPos, newPos + c.CFrame.LookVector)
-		end
+	pcall(function()
+		RunService:UnbindFromRenderStep(freeCamRenderName)
 	end)
+	RunService:BindToRenderStep(freeCamRenderName, Enum.RenderPriority.Camera.Value + 10, renderFreeCam)
 end
 
 createToggle(VisualPage, "Xem từ xa", "Nhân vật đứng yên, camera bay như drone (WASD + Space/Ctrl + Shift).", false, function(value)
@@ -1942,18 +1975,10 @@ local function stopPoseSound()
 	end
 end
 
-local function resetMotorR6(m)
-	if m.Name == "Right Shoulder" then
+local function resetPoseMotor(m)
+	if m.Name == "Right Shoulder" or m.Name == "RightShoulder" then
 		m.C0 = CFrame.new(1, 0.5, 0) * CFrame.Angles(0, math.rad(90), 0)
-	elseif m.Name == "Left Shoulder" then
-		m.C0 = CFrame.new(-1, 0.5, 0) * CFrame.Angles(0, math.rad(-90), 0)
-	end
-end
-
-local function resetMotorR15(m)
-	if m.Name == "RightShoulder" then
-		m.C0 = CFrame.new(1, 0.5, 0) * CFrame.Angles(0, math.rad(90), 0)
-	elseif m.Name == "LeftShoulder" then
+	elseif m.Name == "Left Shoulder" or m.Name == "LeftShoulder" then
 		m.C0 = CFrame.new(-1, 0.5, 0) * CFrame.Angles(0, math.rad(-90), 0)
 	end
 end
@@ -1961,17 +1986,20 @@ end
 local function applyPoseMotor(m, poseId)
 	if not (m:IsA("Motor6D") or m:IsA("Motor")) then return end
 
-	if m.Name == "Right Shoulder" or m.Name == "RightShoulder" then
-		if poseId == "void" then
-			m.C0 = CFrame.new(1, 0.5, 0) * CFrame.Angles(math.rad(90), math.rad(90), 0)
-		elseif poseId == "shrine" then
-			m.C0 = CFrame.new(0.6, 0.5, -0.3) * CFrame.Angles(math.rad(90), math.rad(90), 0)
-		end
-	elseif m.Name == "Left Shoulder" or m.Name == "LeftShoulder" then
-		if poseId == "void" then
+	local isRight = m.Name == "Right Shoulder" or m.Name == "RightShoulder"
+	local isLeft = m.Name == "Left Shoulder" or m.Name == "LeftShoulder"
+
+	if poseId == "void" then
+		if isRight then
+			m.C0 = CFrame.new(1, 0.5, -0.3) * CFrame.Angles(math.rad(-110), 0, math.rad(-20))
+		elseif isLeft then
 			m.C0 = CFrame.new(-1, 0.5, 0) * CFrame.Angles(0, math.rad(-90), 0)
-		elseif poseId == "shrine" then
-			m.C0 = CFrame.new(-0.6, 0.5, -0.3) * CFrame.Angles(math.rad(90), math.rad(-90), 0)
+		end
+	elseif poseId == "shrine" then
+		if isRight then
+			m.C0 = CFrame.new(0.4, 0.8, -0.5) * CFrame.Angles(math.rad(-120), 0, math.rad(-25))
+		elseif isLeft then
+			m.C0 = CFrame.new(-0.4, 0.8, -0.5) * CFrame.Angles(math.rad(-120), 0, math.rad(25))
 		end
 	end
 end
@@ -1989,18 +2017,7 @@ local function resetPose()
 
 	for _, obj in ipairs(character:GetDescendants()) do
 		if obj:IsA("Motor6D") or obj:IsA("Motor") then
-			resetMotorR6(obj)
-			resetMotorR15(obj)
-		end
-	end
-	if character:FindFirstChild("UpperTorso") then
-		for _, obj in ipairs(character.UpperTorso:GetChildren()) do
-			if obj:IsA("Motor6D") then resetMotorR15(obj) end
-		end
-	end
-	if character:FindFirstChild("Torso") then
-		for _, obj in ipairs(character.Torso:GetChildren()) do
-			if obj:IsA("Motor6D") then resetMotorR6(obj) end
+			resetPoseMotor(obj)
 		end
 	end
 
@@ -2020,39 +2037,21 @@ local function applyPose(poseId)
 	poseName = poseId
 	playPoseSound(poseId)
 
-	for _, obj in ipairs(character:GetDescendants()) do
-		applyPoseMotor(obj, poseId)
-	end
-	if character:FindFirstChild("UpperTorso") then
-		for _, obj in ipairs(character.UpperTorso:GetChildren()) do
-			if obj:IsA("Motor6D") then applyPoseMotor(obj, poseId) end
-		end
-	end
-	if character:FindFirstChild("Torso") then
-		for _, obj in ipairs(character.Torso:GetChildren()) do
-			if obj:IsA("Motor6D") then applyPoseMotor(obj, poseId) end
-		end
-	end
-
-	poseConnection = RunService.RenderStepped:Connect(function()
-		if not character or not character.Parent then return end
+	local function applyAll()
 		for _, obj in ipairs(character:GetDescendants()) do
 			applyPoseMotor(obj, poseId)
 		end
-		if character:FindFirstChild("UpperTorso") then
-			for _, obj in ipairs(character.UpperTorso:GetChildren()) do
-				if obj:IsA("Motor6D") then applyPoseMotor(obj, poseId) end
-			end
-		end
-		if character:FindFirstChild("Torso") then
-			for _, obj in ipairs(character.Torso:GetChildren()) do
-				if obj:IsA("Motor6D") then applyPoseMotor(obj, poseId) end
-			end
-		end
+	end
+
+	applyAll()
+
+	poseConnection = RunService.RenderStepped:Connect(function()
+		if not character or not character.Parent then return end
+		applyAll()
 	end)
 end
 
-createButton(VisualPage, "Vô Lượng Không Xứ", "Tay phải giơ ra trước (Gojo) + nhạc.", function()
+createButton(VisualPage, "Vô Lượng Không Xứ", "Tay phải giơ ra trước mặt (Gojo) + nhạc.", function()
 	applyPose("void")
 	showNotice("Đã kích hoạt Vô Lượng Không Xứ", true)
 end, 7)
