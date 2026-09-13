@@ -18,12 +18,7 @@ local MUTED = Color3.fromRGB(145, 170, 200)
 local GREEN = Color3.fromRGB(40, 220, 140)
 local RED = Color3.fromRGB(255, 80, 95)
 
-local DEV_ACCESS = RunService:IsStudio()
-	or (
-		game.CreatorType == Enum.CreatorType.User
-		and game.CreatorId == LocalPlayer.UserId
-	)
-
+-- ĐÃ FIX: bỏ hoàn toàn DEV_ACCESS, cho phép chạy mọi nơi
 local old = PlayerGui:FindFirstChild(GUI_NAME)
 if old then
 	old:Destroy()
@@ -72,15 +67,20 @@ ScreenGui.DisplayOrder = 999999
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = PlayerGui
 
+-- ĐÃ FIX: thu nhỏ menu từ 850x540 -> 620x400
+local MAIN_WIDTH = 620
+local MAIN_HEIGHT = 400
+local MAIN_MIN_HEIGHT = 46
+
 local Main = Instance.new("Frame")
 Main.AnchorPoint = Vector2.new(0.5, 0.5)
 Main.Position = UDim2.fromScale(0.5, 0.5)
-Main.Size = UDim2.fromOffset(850, 540)
+Main.Size = UDim2.fromOffset(MAIN_WIDTH, MAIN_HEIGHT)
 Main.BackgroundColor3 = BLUE_1
 Main.BorderSizePixel = 0
 Main.ClipsDescendants = true
 Main.Parent = ScreenGui
-addCorner(Main, 14)
+addCorner(Main, 12)
 addStroke(Main, Color3.fromRGB(35, 105, 180), 0.35, 1)
 
 local MainGradient = Instance.new("UIGradient")
@@ -93,7 +93,7 @@ MainGradient.Rotation = 25
 MainGradient.Parent = Main
 
 local Header = Instance.new("Frame")
-Header.Size = UDim2.new(1, 0, 0, 58)
+Header.Size = UDim2.new(1, 0, 0, MAIN_MIN_HEIGHT)
 Header.BackgroundColor3 = Color3.fromRGB(8, 30, 62)
 Header.BorderSizePixel = 0
 Header.Parent = Main
@@ -106,18 +106,18 @@ HeaderLine.BackgroundTransparency = 0.65
 HeaderLine.BorderSizePixel = 0
 HeaderLine.Parent = Header
 
-local MenuTitle = addText(Header, "Tho Script", 19, Enum.Font.GothamBold, WHITE)
-MenuTitle.Position = UDim2.fromOffset(20, 7)
-MenuTitle.Size = UDim2.fromOffset(250, 25)
+local MenuTitle = addText(Header, "Tho Script", 15, Enum.Font.GothamBold, WHITE)
+MenuTitle.Position = UDim2.fromOffset(16, 5)
+MenuTitle.Size = UDim2.fromOffset(200, 20)
 
-local MenuSubtitle = addText(Header, "Personal utility interface", 10, Enum.Font.GothamMedium, MUTED)
-MenuSubtitle.Position = UDim2.fromOffset(20, 31)
-MenuSubtitle.Size = UDim2.fromOffset(250, 20)
+local MenuSubtitle = addText(Header, "Personal utility interface", 9, Enum.Font.GothamMedium, MUTED)
+MenuSubtitle.Position = UDim2.fromOffset(16, 24)
+MenuSubtitle.Size = UDim2.fromOffset(200, 16)
 
 local HeaderButtons = Instance.new("Frame")
 HeaderButtons.AnchorPoint = Vector2.new(1, 0.5)
-HeaderButtons.Position = UDim2.new(1, -10, 0.5, 0)
-HeaderButtons.Size = UDim2.fromOffset(126, 34)
+HeaderButtons.Position = UDim2.new(1, -8, 0.5, 0)
+HeaderButtons.Size = UDim2.fromOffset(108, 28)
 HeaderButtons.BackgroundTransparency = 1
 HeaderButtons.Parent = Header
 
@@ -125,21 +125,21 @@ local HeaderLayout = Instance.new("UIListLayout")
 HeaderLayout.FillDirection = Enum.FillDirection.Horizontal
 HeaderLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
 HeaderLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-HeaderLayout.Padding = UDim.new(0, 5)
+HeaderLayout.Padding = UDim.new(0, 4)
 HeaderLayout.Parent = HeaderButtons
 
 local function makeHeaderButton(text)
 	local b = Instance.new("TextButton")
-	b.Size = UDim2.fromOffset(36, 30)
+	b.Size = UDim2.fromOffset(30, 26)
 	b.BackgroundColor3 = Color3.fromRGB(15, 47, 90)
 	b.BorderSizePixel = 0
 	b.Text = text
-	b.TextSize = 14
+	b.TextSize = 13
 	b.Font = Enum.Font.GothamBold
 	b.TextColor3 = WHITE
 	b.AutoButtonColor = false
 	b.Parent = HeaderButtons
-	addCorner(b, 7)
+	addCorner(b, 6)
 
 	b.MouseEnter:Connect(function()
 		tween(b, 0.12, {BackgroundColor3 = BLUE_4})
@@ -157,30 +157,30 @@ local MaximizeButton = makeHeaderButton("□")
 local CloseButton = makeHeaderButton("×")
 
 local Sidebar = Instance.new("Frame")
-Sidebar.Position = UDim2.fromOffset(0, 58)
-Sidebar.Size = UDim2.new(0, 190, 1, -58)
+Sidebar.Position = UDim2.fromOffset(0, MAIN_MIN_HEIGHT)
+Sidebar.Size = UDim2.new(0, 150, 1, -MAIN_MIN_HEIGHT)
 Sidebar.BackgroundColor3 = Color3.fromRGB(6, 24, 50)
 Sidebar.BorderSizePixel = 0
 Sidebar.Parent = Main
 
 local SidebarPadding = Instance.new("UIPadding")
-SidebarPadding.PaddingLeft = UDim.new(0, 12)
-SidebarPadding.PaddingRight = UDim.new(0, 12)
-SidebarPadding.PaddingTop = UDim.new(0, 15)
-SidebarPadding.PaddingBottom = UDim.new(0, 15)
+SidebarPadding.PaddingLeft = UDim.new(0, 10)
+SidebarPadding.PaddingRight = UDim.new(0, 10)
+SidebarPadding.PaddingTop = UDim.new(0, 12)
+SidebarPadding.PaddingBottom = UDim.new(0, 12)
 SidebarPadding.Parent = Sidebar
 
 local SidebarLayout = Instance.new("UIListLayout")
-SidebarLayout.Padding = UDim.new(0, 8)
+SidebarLayout.Padding = UDim.new(0, 6)
 SidebarLayout.SortOrder = Enum.SortOrder.LayoutOrder
 SidebarLayout.Parent = Sidebar
 
-local TabsTitle = addText(Sidebar, "CHỨC NĂNG", 10, Enum.Font.GothamBold, MUTED)
-TabsTitle.Size = UDim2.new(1, 0, 0, 25)
+local TabsTitle = addText(Sidebar, "CHỨC NĂNG", 9, Enum.Font.GothamBold, MUTED)
+TabsTitle.Size = UDim2.new(1, 0, 0, 20)
 
 local Content = Instance.new("Frame")
-Content.Position = UDim2.fromOffset(190, 58)
-Content.Size = UDim2.new(1, -190, 1, -58)
+Content.Position = UDim2.fromOffset(150, MAIN_MIN_HEIGHT)
+Content.Size = UDim2.new(1, -150, 1, -MAIN_MIN_HEIGHT)
 Content.BackgroundTransparency = 1
 Content.ClipsDescendants = true
 Content.Parent = Main
@@ -192,27 +192,27 @@ local currentTab = "Player"
 local function createTab(name, order)
 	local button = Instance.new("TextButton")
 	button.LayoutOrder = order
-	button.Size = UDim2.new(1, 0, 0, 43)
+	button.Size = UDim2.new(1, 0, 0, 34)
 	button.BackgroundColor3 = Color3.fromRGB(11, 39, 76)
 	button.BackgroundTransparency = 0.35
 	button.BorderSizePixel = 0
 	button.Text = ""
 	button.AutoButtonColor = false
 	button.Parent = Sidebar
-	addCorner(button, 8)
+	addCorner(button, 7)
 
 	local accent = Instance.new("Frame")
-	accent.Position = UDim2.fromOffset(0, 8)
-	accent.Size = UDim2.fromOffset(3, 27)
+	accent.Position = UDim2.fromOffset(0, 6)
+	accent.Size = UDim2.fromOffset(3, 22)
 	accent.BackgroundColor3 = BLUE_5
 	accent.BackgroundTransparency = name == "Player" and 0 or 1
 	accent.BorderSizePixel = 0
 	accent.Parent = button
 	addCorner(accent, 4)
 
-	local label = addText(button, name, 13, Enum.Font.GothamSemibold, name == "Player" and WHITE or MUTED)
-	label.Position = UDim2.fromOffset(15, 0)
-	label.Size = UDim2.new(1, -20, 1, 0)
+	local label = addText(button, name, 12, Enum.Font.GothamSemibold, name == "Player" and WHITE or MUTED)
+	label.Position = UDim2.fromOffset(12, 0)
+	label.Size = UDim2.new(1, -16, 1, 0)
 
 	button.MouseEnter:Connect(function()
 		if currentTab ~= name then
@@ -234,7 +234,7 @@ local function createTab(name, order)
 		for tabName, frame in pairs(TabFrames) do
 			if tabName == name then
 				frame.Visible = true
-				frame.Position = UDim2.fromOffset(14, 0)
+				frame.Position = UDim2.fromOffset(10, 0)
 				tween(frame, 0.18, {Position = UDim2.fromOffset(0, 0)})
 			else
 				frame.Visible = false
@@ -277,14 +277,14 @@ local function createPage(name)
 	page.Parent = Content
 
 	local padding = Instance.new("UIPadding")
-	padding.PaddingLeft = UDim.new(0, 20)
-	padding.PaddingRight = UDim.new(0, 20)
-	padding.PaddingTop = UDim.new(0, 18)
-	padding.PaddingBottom = UDim.new(0, 20)
+	padding.PaddingLeft = UDim.new(0, 16)
+	padding.PaddingRight = UDim.new(0, 16)
+	padding.PaddingTop = UDim.new(0, 14)
+	padding.PaddingBottom = UDim.new(0, 16)
 	padding.Parent = page
 
 	local layout = Instance.new("UIListLayout")
-	layout.Padding = UDim.new(0, 9)
+	layout.Padding = UDim.new(0, 7)
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
 	layout.Parent = page
 
@@ -301,26 +301,26 @@ local ServerPage = createPage("Server")
 local function showNotice(text, success)
 	local notice = Instance.new("Frame")
 	notice.AnchorPoint = Vector2.new(1, 0)
-	notice.Position = UDim2.new(1, 18, 0, 72)
-	notice.Size = UDim2.fromOffset(300, 52)
+	notice.Position = UDim2.new(1, 18, 0, 56)
+	notice.Size = UDim2.fromOffset(240, 44)
 	notice.BackgroundColor3 = success and Color3.fromRGB(10, 67, 59) or Color3.fromRGB(67, 29, 39)
 	notice.BorderSizePixel = 0
 	notice.ZIndex = 200
 	notice.Parent = Main
-	addCorner(notice, 9)
+	addCorner(notice, 8)
 	addStroke(notice, success and GREEN or RED, 0.55, 1)
 
-	local label = addText(notice, text, 11, Enum.Font.GothamSemibold, WHITE)
-	label.Position = UDim2.fromOffset(13, 0)
-	label.Size = UDim2.new(1, -26, 1, 0)
+	local label = addText(notice, text, 10, Enum.Font.GothamSemibold, WHITE)
+	label.Position = UDim2.fromOffset(10, 0)
+	label.Size = UDim2.new(1, -20, 1, 0)
 	label.TextWrapped = true
 	label.ZIndex = 201
 
-	tween(notice, 0.2, {Position = UDim2.new(1, -15, 0, 72)})
+	tween(notice, 0.2, {Position = UDim2.new(1, -12, 0, 56)})
 
 	task.delay(2.1, function()
 		if notice.Parent then
-			tween(notice, 0.18, {Position = UDim2.new(1, 18, 0, 72)})
+			tween(notice, 0.18, {Position = UDim2.new(1, 18, 0, 56)})
 			task.wait(0.2)
 			notice:Destroy()
 		end
@@ -330,12 +330,12 @@ end
 local function createSection(parent, title, order)
 	local f = Instance.new("Frame")
 	f.LayoutOrder = order
-	f.Size = UDim2.new(1, 0, 0, 36)
+	f.Size = UDim2.new(1, 0, 0, 28)
 	f.BackgroundTransparency = 1
 	f.Parent = parent
 
-	local t = addText(f, title, 18, Enum.Font.GothamBold, WHITE)
-	t.Size = UDim2.new(1, 0, 0, 24)
+	local t = addText(f, title, 15, Enum.Font.GothamBold, WHITE)
+	t.Size = UDim2.new(1, 0, 0, 20)
 
 	local line = Instance.new("Frame")
 	line.Position = UDim2.new(0, 0, 1, -3)
@@ -348,28 +348,28 @@ end
 local function createToggle(parent, title, description, defaultValue, callback, order)
 	local row = Instance.new("Frame")
 	row.LayoutOrder = order
-	row.Size = UDim2.new(1, 0, 0, 70)
+	row.Size = UDim2.new(1, 0, 0, 56)
 	row.BackgroundColor3 = Color3.fromRGB(8, 29, 58)
 	row.BackgroundTransparency = 0.2
 	row.BorderSizePixel = 0
 	row.Parent = parent
-	addCorner(row, 9)
+	addCorner(row, 8)
 	addStroke(row, Color3.fromRGB(31, 84, 140), 0.68, 1)
 
-	local titleLabel = addText(row, title, 13, Enum.Font.GothamSemibold, WHITE)
-	titleLabel.Position = UDim2.fromOffset(14, 8)
-	titleLabel.Size = UDim2.new(1, -95, 0, 20)
+	local titleLabel = addText(row, title, 12, Enum.Font.GothamSemibold, WHITE)
+	titleLabel.Position = UDim2.fromOffset(12, 6)
+	titleLabel.Size = UDim2.new(1, -80, 0, 18)
 
-	local descLabel = addText(row, description, 10, Enum.Font.Gotham, MUTED)
-	descLabel.Position = UDim2.fromOffset(14, 31)
-	descLabel.Size = UDim2.new(1, -108, 0, 27)
+	local descLabel = addText(row, description, 9, Enum.Font.Gotham, MUTED)
+	descLabel.Position = UDim2.fromOffset(12, 25)
+	descLabel.Size = UDim2.new(1, -90, 0, 22)
 	descLabel.TextWrapped = true
 	descLabel.TextYAlignment = Enum.TextYAlignment.Top
 
 	local track = Instance.new("TextButton")
 	track.AnchorPoint = Vector2.new(1, 0.5)
-	track.Position = UDim2.new(1, -14, 0.5, 0)
-	track.Size = UDim2.fromOffset(48, 26)
+	track.Position = UDim2.new(1, -12, 0.5, 0)
+	track.Size = UDim2.fromOffset(42, 22)
 	track.BackgroundColor3 = Color3.fromRGB(29, 49, 77)
 	track.BorderSizePixel = 0
 	track.Text = ""
@@ -379,8 +379,8 @@ local function createToggle(parent, title, description, defaultValue, callback, 
 
 	local knob = Instance.new("Frame")
 	knob.AnchorPoint = Vector2.new(0.5, 0.5)
-	knob.Position = UDim2.new(0, 13, 0.5, 0)
-	knob.Size = UDim2.fromOffset(18, 18)
+	knob.Position = UDim2.new(0, 11, 0.5, 0)
+	knob.Size = UDim2.fromOffset(16, 16)
 	knob.BackgroundColor3 = Color3.fromRGB(180, 200, 220)
 	knob.BorderSizePixel = 0
 	knob.Parent = track
@@ -397,13 +397,13 @@ local function createToggle(parent, title, description, defaultValue, callback, 
 		if state then
 			tween(track, 0.16, {BackgroundColor3 = BLUE_4})
 			tween(knob, 0.16, {
-				Position = UDim2.new(1, -13, 0.5, 0),
+				Position = UDim2.new(1, -11, 0.5, 0),
 				BackgroundColor3 = WHITE
 			})
 		else
 			tween(track, 0.16, {BackgroundColor3 = Color3.fromRGB(29, 49, 77)})
 			tween(knob, 0.16, {
-				Position = UDim2.new(0, 13, 0.5, 0),
+				Position = UDim2.new(0, 11, 0.5, 0),
 				BackgroundColor3 = Color3.fromRGB(180, 200, 220)
 			})
 		end
@@ -436,37 +436,37 @@ end
 local function createButton(parent, title, description, callback, order)
 	local row = Instance.new("Frame")
 	row.LayoutOrder = order
-	row.Size = UDim2.new(1, 0, 0, 70)
+	row.Size = UDim2.new(1, 0, 0, 56)
 	row.BackgroundColor3 = Color3.fromRGB(8, 29, 58)
 	row.BackgroundTransparency = 0.2
 	row.BorderSizePixel = 0
 	row.Parent = parent
-	addCorner(row, 9)
+	addCorner(row, 8)
 	addStroke(row, Color3.fromRGB(31, 84, 140), 0.68, 1)
 
-	local titleLabel = addText(row, title, 13, Enum.Font.GothamSemibold, WHITE)
-	titleLabel.Position = UDim2.fromOffset(14, 8)
-	titleLabel.Size = UDim2.new(1, -140, 0, 20)
+	local titleLabel = addText(row, title, 12, Enum.Font.GothamSemibold, WHITE)
+	titleLabel.Position = UDim2.fromOffset(12, 6)
+	titleLabel.Size = UDim2.new(1, -110, 0, 18)
 
-	local descLabel = addText(row, description, 10, Enum.Font.Gotham, MUTED)
-	descLabel.Position = UDim2.fromOffset(14, 31)
-	descLabel.Size = UDim2.new(1, -138, 0, 27)
+	local descLabel = addText(row, description, 9, Enum.Font.Gotham, MUTED)
+	descLabel.Position = UDim2.fromOffset(12, 25)
+	descLabel.Size = UDim2.new(1, -110, 0, 22)
 	descLabel.TextWrapped = true
 	descLabel.TextYAlignment = Enum.TextYAlignment.Top
 
 	local button = Instance.new("TextButton")
 	button.AnchorPoint = Vector2.new(1, 0.5)
-	button.Position = UDim2.new(1, -14, 0.5, 0)
-	button.Size = UDim2.fromOffset(104, 34)
+	button.Position = UDim2.new(1, -12, 0.5, 0)
+	button.Size = UDim2.fromOffset(84, 28)
 	button.BackgroundColor3 = BLUE_3
 	button.BorderSizePixel = 0
 	button.Text = "THỰC HIỆN"
-	button.TextSize = 10
+	button.TextSize = 9
 	button.Font = Enum.Font.GothamBold
 	button.TextColor3 = WHITE
 	button.AutoButtonColor = false
 	button.Parent = row
-	addCorner(button, 7)
+	addCorner(button, 6)
 
 	button.MouseEnter:Connect(function()
 		tween(button, 0.12, {BackgroundColor3 = BLUE_4})
@@ -477,10 +477,10 @@ local function createButton(parent, title, description, callback, order)
 	end)
 
 	button.Activated:Connect(function()
-		tween(button, 0.07, {Size = UDim2.fromOffset(98, 31)})
+		tween(button, 0.07, {Size = UDim2.fromOffset(80, 26)})
 		task.delay(0.07, function()
 			if button.Parent then
-				tween(button, 0.1, {Size = UDim2.fromOffset(104, 34)})
+				tween(button, 0.1, {Size = UDim2.fromOffset(84, 28)})
 			end
 		end)
 
@@ -493,31 +493,31 @@ end
 local function createSlider(parent, title, description, minValue, maxValue, defaultValue, callback, order)
 	local row = Instance.new("Frame")
 	row.LayoutOrder = order
-	row.Size = UDim2.new(1, 0, 0, 91)
+	row.Size = UDim2.new(1, 0, 0, 74)
 	row.BackgroundColor3 = Color3.fromRGB(8, 29, 58)
 	row.BackgroundTransparency = 0.2
 	row.BorderSizePixel = 0
 	row.Parent = parent
-	addCorner(row, 9)
+	addCorner(row, 8)
 	addStroke(row, Color3.fromRGB(31, 84, 140), 0.68, 1)
 
-	local titleLabel = addText(row, title, 13, Enum.Font.GothamSemibold, WHITE)
-	titleLabel.Position = UDim2.fromOffset(14, 8)
-	titleLabel.Size = UDim2.new(1, -110, 0, 20)
+	local titleLabel = addText(row, title, 12, Enum.Font.GothamSemibold, WHITE)
+	titleLabel.Position = UDim2.fromOffset(12, 6)
+	titleLabel.Size = UDim2.new(1, -90, 0, 18)
 
-	local valueLabel = addText(row, tostring(defaultValue), 12, Enum.Font.GothamBold, BLUE_5)
-	valueLabel.Position = UDim2.new(1, -75, 0, 8)
-	valueLabel.Size = UDim2.fromOffset(60, 20)
+	local valueLabel = addText(row, tostring(defaultValue), 11, Enum.Font.GothamBold, BLUE_5)
+	valueLabel.Position = UDim2.new(1, -60, 0, 6)
+	valueLabel.Size = UDim2.fromOffset(48, 18)
 	valueLabel.TextXAlignment = Enum.TextXAlignment.Right
 
-	local descLabel = addText(row, description, 10, Enum.Font.Gotham, MUTED)
-	descLabel.Position = UDim2.fromOffset(14, 31)
-	descLabel.Size = UDim2.new(1, -28, 0, 21)
+	local descLabel = addText(row, description, 9, Enum.Font.Gotham, MUTED)
+	descLabel.Position = UDim2.fromOffset(12, 24)
+	descLabel.Size = UDim2.new(1, -24, 0, 18)
 	descLabel.TextWrapped = true
 
 	local bar = Instance.new("Frame")
-	bar.Position = UDim2.new(0, 14, 1, -24)
-	bar.Size = UDim2.new(1, -28, 0, 7)
+	bar.Position = UDim2.new(0, 12, 1, -20)
+	bar.Size = UDim2.new(1, -24, 0, 6)
 	bar.BackgroundColor3 = Color3.fromRGB(26, 48, 78)
 	bar.BorderSizePixel = 0
 	bar.Parent = row
@@ -533,7 +533,7 @@ local function createSlider(parent, title, description, minValue, maxValue, defa
 	local knob = Instance.new("Frame")
 	knob.AnchorPoint = Vector2.new(0.5, 0.5)
 	knob.Position = UDim2.new(0, 0, 0.5, 0)
-	knob.Size = UDim2.fromOffset(15, 15)
+	knob.Size = UDim2.fromOffset(13, 13)
 	knob.BackgroundColor3 = WHITE
 	knob.BorderSizePixel = 0
 	knob.ZIndex = 3
@@ -629,7 +629,7 @@ end
 
 refreshCharacter()
 
-localPlayerCharacterConnection = LocalPlayer.CharacterAdded:Connect(function(char)
+LocalPlayer.CharacterAdded:Connect(function(char)
 	character = char
 	humanoid = char:WaitForChild("Humanoid", 5)
 	root = char:WaitForChild("HumanoidRootPart", 5)
@@ -669,12 +669,6 @@ local function stopFly()
 end
 
 local function startFly()
-	if not DEV_ACCESS then
-		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
-		State.fly = false
-		return
-	end
-
 	refreshCharacter()
 
 	if not humanoid or not root then
@@ -737,7 +731,7 @@ local function startFly()
 	end)
 end
 
-createToggle(PlayerPage, "Bay", "Bật chế độ bay và thay đổi tốc độ bằng thanh trượt.", false, function(value)
+createToggle(PlayerPage, "Bay", "Bật chế độ bay, dùng WASD + Space/Ctrl để di chuyển.", false, function(value)
 	State.fly = value
 	if value then
 		startFly()
@@ -768,12 +762,6 @@ local function stopAirWalk()
 end
 
 local function startAirWalk()
-	if not DEV_ACCESS then
-		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
-		State.airWalk = false
-		return
-	end
-
 	refreshCharacter()
 	if not root then return end
 
@@ -792,7 +780,7 @@ local function startAirWalk()
 	end)
 end
 
-createToggle(PlayerPage, "Đi trên không", "Giữ một bề mặt đỡ ngay dưới nhân vật trong experience của bạn.", false, function(value)
+createToggle(PlayerPage, "Đi trên không", "Tạo bệ đỡ ngay dưới chân nhân vật.", false, function(value)
 	State.airWalk = value
 	if value then
 		startAirWalk()
@@ -810,10 +798,6 @@ end
 
 createToggle(PlayerPage, "Chạy nhanh", "Thay đổi tốc độ di chuyển của Humanoid.", false, function(value)
 	State.speed = value
-	if not DEV_ACCESS then
-		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
-		return
-	end
 	applyWalkSpeed()
 end, 5)
 
@@ -834,10 +818,6 @@ end
 
 createToggle(PlayerPage, "Nhảy cao", "Tăng JumpPower của nhân vật.", false, function(value)
 	State.jump = value
-	if not DEV_ACCESS then
-		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
-		return
-	end
 	applyJumpPower()
 end, 7)
 
@@ -867,12 +847,6 @@ local function stopNoclip()
 end
 
 local function startNoclip()
-	if not DEV_ACCESS then
-		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
-		State.noclip = false
-		return
-	end
-
 	noclipConnection = RunService.Stepped:Connect(function()
 		if not State.noclip or not character then return end
 		for _, object in ipairs(character:GetDescendants()) do
@@ -883,7 +857,7 @@ local function startNoclip()
 	end)
 end
 
-createToggle(PlayerPage, "Đi xuyên tường", "Tắt collision của các bộ phận nhân vật để kiểm tra map.", false, function(value)
+createToggle(PlayerPage, "Đi xuyên tường", "Tắt collision của nhân vật.", false, function(value)
 	State.noclip = value
 	if value then
 		startNoclip()
@@ -907,12 +881,6 @@ local function stopLying()
 end
 
 local function startLying()
-	if not DEV_ACCESS then
-		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
-		State.lying = false
-		return
-	end
-
 	refreshCharacter()
 	if not humanoid or not root then return end
 
@@ -926,7 +894,7 @@ local function startLying()
 	end)
 end
 
-createToggle(PlayerPage, "Nằm", "Đưa nhân vật về tư thế nằm trong experience của bạn.", false, function(value)
+createToggle(PlayerPage, "Nằm", "Đưa nhân vật về tư thế nằm.", false, function(value)
 	State.lying = value
 	if value then
 		startLying()
@@ -935,14 +903,8 @@ createToggle(PlayerPage, "Nằm", "Đưa nhân vật về tư thế nằm trong 
 	end
 end, 10)
 
-createToggle(PlayerPage, "Ngồi", "Đưa Humanoid vào trạng thái ngồi chuẩn.", false, function(value)
+createToggle(PlayerPage, "Ngồi", "Đưa Humanoid vào trạng thái ngồi.", false, function(value)
 	State.sitting = value
-
-	if not DEV_ACCESS then
-		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
-		return
-	end
-
 	refreshCharacter()
 	if humanoid then
 		humanoid.Sit = value
@@ -960,12 +922,6 @@ local function stopSpin()
 end
 
 local function startSpin()
-	if not DEV_ACCESS then
-		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
-		State.spin = false
-		return
-	end
-
 	spinConnection = RunService.RenderStepped:Connect(function(delta)
 		if State.spin then
 			refreshCharacter()
@@ -976,7 +932,7 @@ local function startSpin()
 	end)
 end
 
-createToggle(PlayerPage, "Xoay", "Xoay nhân vật liên tục theo tốc độ đã chọn.", false, function(value)
+createToggle(PlayerPage, "Xoay", "Xoay nhân vật liên tục.", false, function(value)
 	State.spin = value
 	if value then
 		startSpin()
@@ -1018,19 +974,19 @@ local function ensureESP(player)
 	highlight.Parent = ESPFolder
 
 	local billboard = Instance.new("BillboardGui")
-	billboard.Size = UDim2.fromOffset(190, 54)
+	billboard.Size = UDim2.fromOffset(160, 44)
 	billboard.StudsOffset = Vector3.new(0, 3.4, 0)
 	billboard.AlwaysOnTop = true
 	billboard.Enabled = false
 	billboard.Parent = ESPFolder
 
-	local nameLabel = addText(billboard, player.DisplayName, 12, Enum.Font.GothamBold, WHITE)
-	nameLabel.Size = UDim2.new(1, 0, 0, 22)
+	local nameLabel = addText(billboard, player.DisplayName, 11, Enum.Font.GothamBold, WHITE)
+	nameLabel.Size = UDim2.new(1, 0, 0, 18)
 	nameLabel.TextXAlignment = Enum.TextXAlignment.Center
 
-	local infoLabel = addText(billboard, "HP: -- | -- studs", 10, Enum.Font.GothamMedium, MUTED)
-	infoLabel.Position = UDim2.fromOffset(0, 22)
-	infoLabel.Size = UDim2.new(1, 0, 0, 20)
+	local infoLabel = addText(billboard, "HP: -- | -- studs", 9, Enum.Font.GothamMedium, MUTED)
+	infoLabel.Position = UDim2.fromOffset(0, 18)
+	infoLabel.Size = UDim2.new(1, 0, 0, 16)
 	infoLabel.TextXAlignment = Enum.TextXAlignment.Center
 
 	ESPData[player] = {
@@ -1056,12 +1012,6 @@ local function stopESP()
 end
 
 local function startESP()
-	if not DEV_ACCESS then
-		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
-		State.esp = false
-		return
-	end
-
 	for _, player in ipairs(Players:GetPlayers()) do
 		ensureESP(player)
 	end
@@ -1118,7 +1068,7 @@ Players.PlayerRemoving:Connect(function(player)
 	destroyESP(player)
 end)
 
-createToggle(PlayerPage, "Định vị người chơi", "Hiển thị khung, tên, máu và khoảng cách; bỏ qua chính bạn.", false, function(value)
+createToggle(PlayerPage, "Định vị người chơi", "Hiển thị khung, tên, máu và khoảng cách.", false, function(value)
 	State.esp = value
 	if value then
 		startESP()
@@ -1129,28 +1079,15 @@ end, 14)
 
 createSection(ServerPage, "Server", 1)
 
-createButton(ServerPage, "Đổi máy chủ", "Giao diện dành cho server browser của experience bạn.", function()
-	if not DEV_ACCESS then
-		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
-		return
-	end
-	showNotice("Server hop cần hệ thống chọn instance của chính experience.", false)
+createButton(ServerPage, "Đổi máy chủ", "Giao diện dành cho server browser.", function()
+	showNotice("Server hop cần hệ thống chọn instance của experience.", false)
 end, 2)
 
 createButton(ServerPage, "Đổi máy chủ ít người", "Giao diện dành cho hệ thống tìm instance ít người.", function()
-	if not DEV_ACCESS then
-		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
-		return
-	end
 	showNotice("Cần server browser/API của experience để chọn instance.", false)
 end, 3)
 
 createButton(ServerPage, "Tham gia lại máy chủ", "Thử quay lại đúng JobId của instance hiện tại.", function()
-	if not DEV_ACCESS then
-		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
-		return
-	end
-
 	local jobId = game.JobId
 	if jobId == "" then
 		showNotice("Không có JobId hợp lệ trong môi trường hiện tại.", false)
@@ -1167,26 +1104,22 @@ createButton(ServerPage, "Tham gia lại máy chủ", "Thử quay lại đúng J
 end, 4)
 
 createToggle(ServerPage, "Tự động chạy script", "Lưu trạng thái giao diện trong phiên hiện tại.", false, function(value)
-	if not DEV_ACCESS then
-		showNotice("Chức năng này chỉ dành cho experience bạn phát triển.", false)
-		return
-	end
-
 	showNotice(value and "Đã bật tự động khôi phục trạng thái." or "Đã tắt tự động khôi phục.", true)
 end, 5)
 
+-- ĐÃ FIX: Nút T giờ toggle thực sự (bấm lần 1 ẩn menu, bấm lần 2 hiện lại)
 local FloatingButton = Instance.new("TextButton")
 FloatingButton.AnchorPoint = Vector2.new(1, 1)
-FloatingButton.Position = UDim2.new(1, -24, 1, -24)
-FloatingButton.Size = UDim2.fromOffset(58, 58)
+FloatingButton.Position = UDim2.new(1, -18, 1, -18)
+FloatingButton.Size = UDim2.fromOffset(46, 46)
 FloatingButton.BackgroundColor3 = BLUE_4
 FloatingButton.BorderSizePixel = 0
 FloatingButton.Text = "T"
-FloatingButton.TextSize = 22
+FloatingButton.TextSize = 18
 FloatingButton.Font = Enum.Font.GothamBold
 FloatingButton.TextColor3 = WHITE
 FloatingButton.AutoButtonColor = false
-FloatingButton.Visible = true
+FloatingButton.Visible = false -- ĐÃ FIX: ban đầu ẩn vì menu đang mở
 FloatingButton.ZIndex = 300
 FloatingButton.Parent = ScreenGui
 addCorner(FloatingButton, 100)
@@ -1204,21 +1137,23 @@ addCorner(FloatingGlow, 100)
 
 FloatingButton.MouseEnter:Connect(function()
 	tween(FloatingButton, 0.12, {
-		Size = UDim2.fromOffset(64, 64),
+		Size = UDim2.fromOffset(52, 52),
 		BackgroundColor3 = BLUE_5
 	})
 end)
 
 FloatingButton.MouseLeave:Connect(function()
 	tween(FloatingButton, 0.12, {
-		Size = UDim2.fromOffset(58, 58),
+		Size = UDim2.fromOffset(46, 46),
 		BackgroundColor3 = BLUE_4
 	})
 end)
 
-local originalSize = Main.Size
+local originalSize = UDim2.fromOffset(MAIN_WIDTH, MAIN_HEIGHT)
 local minimized = false
 local maximized = false
+
+-- ĐÃ FIX: dùng 1 biến trạng thái duy nhất, toggle rõ ràng
 local menuOpen = true
 
 local function setMenuVisible(value)
@@ -1241,7 +1176,7 @@ MinimizeButton.Activated:Connect(function()
 	if minimized then
 		Sidebar.Visible = false
 		Content.Visible = false
-		tween(Main, 0.22, {Size = UDim2.fromOffset(850, 58)})
+		tween(Main, 0.22, {Size = UDim2.fromOffset(MAIN_WIDTH, MAIN_MIN_HEIGHT)})
 		MenuSubtitle.Text = "Đã thu nhỏ"
 	else
 		Sidebar.Visible = true
@@ -1261,7 +1196,7 @@ MaximizeButton.Activated:Connect(function()
 	maximized = not maximized
 
 	tween(Main, 0.24, {
-		Size = maximized and UDim2.fromOffset(1020, 650) or originalSize
+		Size = maximized and UDim2.fromOffset(820, 520) or originalSize
 	})
 end)
 
@@ -1303,11 +1238,8 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
 
 	if input.KeyCode == Enum.KeyCode.RightShift then
-		if Main.Visible then
-			setMenuVisible(false)
-		else
-			setMenuVisible(true)
-		end
+		-- ĐÃ FIX: toggle thực sự giữa ẩn/hiện
+		setMenuVisible(not menuOpen)
 	end
 end)
 
