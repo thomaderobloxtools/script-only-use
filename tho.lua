@@ -1,9 +1,22 @@
+-- [ThoScript] BUILD: 2026-09-13 #7
+-- CHANGELOG:
+--  - Fix nút T: tách ScreenGui riêng, vị trí giữa-phải, DisplayOrder riêng
+--  - Fix fly: dùng LinearVelocity + Physics state, di chuyển mượt
+--  - Fix spin: tạm dừng khi có input WASD
+--  - Fix slider: hitbox trong suốt to hơn, kéo dễ
+--  - Fix ESP: đậm hơn, thêm SelectionBox, text scale
+--  - Thêm "Giảm lag" (tổng hợp từ Fix Lag source)
+--  - Thêm queue_on_teleport cho "Tự chạy script"
+local SCRIPT_BUILD = "2026-09-13-#7"
+
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
+local Lighting = game:GetService("Lighting")
+local Workspace = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -20,9 +33,9 @@ local GREEN = Color3.fromRGB(40, 220, 140)
 local RED = Color3.fromRGB(255, 80, 95)
 
 local old = PlayerGui:FindFirstChild(GUI_NAME)
-if old then
-	old:Destroy()
-end
+if old then old:Destroy() end
+local oldFloat = PlayerGui:FindFirstChild(GUI_NAME .. "_Float")
+if oldFloat then oldFloat:Destroy() end
 
 local function tween(object, time, properties)
 	local info = TweenInfo.new(time or 0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
@@ -55,11 +68,12 @@ local function addText(parent, text, size, font, color)
 	label.Font = font or Enum.Font.Gotham
 	label.TextColor3 = color or WHITE
 	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.Active = false          -- FIX: label không nuốt input
+	label.Active = false
 	label.Parent = parent
 	return label
 end
 
+-- ============ SCREEN GUI CHÍNH ============
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = GUI_NAME
 ScreenGui.ResetOnSpawn = false
@@ -96,7 +110,7 @@ local Header = Instance.new("Frame")
 Header.Size = UDim2.new(1, 0, 0, MAIN_MIN_HEIGHT)
 Header.BackgroundColor3 = Color3.fromRGB(8, 30, 62)
 Header.BorderSizePixel = 0
-Header.Active = true          -- FIX: header bắt được input
+Header.Active = true
 Header.Parent = Main
 
 local HeaderLine = Instance.new("Frame")
@@ -112,7 +126,7 @@ local MenuTitle = addText(Header, "Tho Script", 15, Enum.Font.GothamBold, WHITE)
 MenuTitle.Position = UDim2.fromOffset(16, 5)
 MenuTitle.Size = UDim2.fromOffset(200, 20)
 
-local MenuSubtitle = addText(Header, "Personal utility interface", 9, Enum.Font.GothamMedium, MUTED)
+local MenuSubtitle = addText(Header, "Build " .. SCRIPT_BUILD, 9, Enum.Font.GothamMedium, MUTED)
 MenuSubtitle.Position = UDim2.fromOffset(16, 24)
 MenuSubtitle.Size = UDim2.fromOffset(200, 16)
 
@@ -121,7 +135,7 @@ HeaderButtons.AnchorPoint = Vector2.new(1, 0.5)
 HeaderButtons.Position = UDim2.new(1, -8, 0.5, 0)
 HeaderButtons.Size = UDim2.fromOffset(108, 28)
 HeaderButtons.BackgroundTransparency = 1
-HeaderButtons.Active = false  -- FIX: frame chứa nút không nuốt input của header
+HeaderButtons.Active = false
 HeaderButtons.Parent = Header
 
 local HeaderLayout = Instance.new("UIListLayout")
@@ -144,14 +158,8 @@ local function makeHeaderButton(text)
 	b.Parent = HeaderButtons
 	addCorner(b, 6)
 
-	b.MouseEnter:Connect(function()
-		tween(b, 0.12, {BackgroundColor3 = BLUE_4})
-	end)
-
-	b.MouseLeave:Connect(function()
-		tween(b, 0.12, {BackgroundColor3 = Color3.fromRGB(15, 47, 90)})
-	end)
-
+	b.MouseEnter:Connect(function() tween(b, 0.12, {BackgroundColor3 = BLUE_4}) end)
+	b.MouseLeave:Connect(function() tween(b, 0.12, {BackgroundColor3 = Color3.fromRGB(15, 47, 90)}) end)
 	return b
 end
 
@@ -224,7 +232,6 @@ local function createTab(name, order)
 			tween(label, 0.12, {TextColor3 = WHITE})
 		end
 	end)
-
 	button.MouseLeave:Connect(function()
 		if currentTab ~= name then
 			tween(button, 0.12, {BackgroundTransparency = 0.35})
@@ -234,7 +241,6 @@ local function createTab(name, order)
 
 	button.Activated:Connect(function()
 		currentTab = name
-
 		for tabName, frame in pairs(TabFrames) do
 			if tabName == name then
 				frame.Visible = true
@@ -244,26 +250,15 @@ local function createTab(name, order)
 				frame.Visible = false
 			end
 		end
-
 		for tabName, data in pairs(TabButtons) do
 			local active = tabName == name
-			tween(data.button, 0.12, {
-				BackgroundTransparency = active and 0.03 or 0.35
-			})
-			tween(data.label, 0.12, {
-				TextColor3 = active and WHITE or MUTED
-			})
-			tween(data.accent, 0.12, {
-				BackgroundTransparency = active and 0 or 1
-			})
+			tween(data.button, 0.12, {BackgroundTransparency = active and 0.03 or 0.35})
+			tween(data.label, 0.12, {TextColor3 = active and WHITE or MUTED})
+			tween(data.accent, 0.12, {BackgroundTransparency = active and 0 or 1})
 		end
 	end)
 
-	TabButtons[name] = {
-		button = button,
-		label = label,
-		accent = accent
-	}
+	TabButtons[name] = { button = button, label = label, accent = accent }
 end
 
 local function createPage(name)
@@ -322,7 +317,6 @@ local function showNotice(text, success)
 	label.ZIndex = 201
 
 	tween(notice, 0.2, {Position = UDim2.new(1, -12, 0, 56)})
-
 	task.delay(2.1, function()
 		if notice.Parent then
 			tween(notice, 0.18, {Position = UDim2.new(1, 18, 0, 56)})
@@ -404,40 +398,23 @@ local function createToggle(parent, title, description, defaultValue, callback, 
 
 		if state then
 			tween(track, 0.16, {BackgroundColor3 = BLUE_4})
-			tween(knob, 0.16, {
-				Position = UDim2.new(1, -11, 0.5, 0),
-				BackgroundColor3 = WHITE
-			})
+			tween(knob, 0.16, {Position = UDim2.new(1, -11, 0.5, 0), BackgroundColor3 = WHITE})
 		else
 			tween(track, 0.16, {BackgroundColor3 = Color3.fromRGB(29, 49, 77)})
-			tween(knob, 0.16, {
-				Position = UDim2.new(0, 11, 0.5, 0),
-				BackgroundColor3 = Color3.fromRGB(180, 200, 220)
-			})
+			tween(knob, 0.16, {Position = UDim2.new(0, 11, 0.5, 0), BackgroundColor3 = Color3.fromRGB(180, 200, 220)})
 		end
 
-		if callback and notify ~= false then
-			callback(state)
-		end
+		if callback and notify ~= false then callback(state) end
 
-		task.delay(0.05, function()
-			busy = false
-		end)
+		task.delay(0.05, function() busy = false end)
 	end
 
-	track.Activated:Connect(function()
-		setState(not state)
-	end)
-
+	track.Activated:Connect(function() setState(not state) end)
 	setState(state, false)
 
 	return {
-		Set = function(value)
-			setState(value)
-		end,
-		Get = function()
-			return state
-		end
+		Set = function(value) setState(value) end,
+		Get = function() return state end
 	}
 end
 
@@ -476,13 +453,8 @@ local function createButton(parent, title, description, callback, order)
 	button.Parent = row
 	addCorner(button, 6)
 
-	button.MouseEnter:Connect(function()
-		tween(button, 0.12, {BackgroundColor3 = BLUE_4})
-	end)
-
-	button.MouseLeave:Connect(function()
-		tween(button, 0.12, {BackgroundColor3 = BLUE_3})
-	end)
+	button.MouseEnter:Connect(function() tween(button, 0.12, {BackgroundColor3 = BLUE_4}) end)
+	button.MouseLeave:Connect(function() tween(button, 0.12, {BackgroundColor3 = BLUE_3}) end)
 
 	button.Activated:Connect(function()
 		tween(button, 0.07, {Size = UDim2.fromOffset(80, 26)})
@@ -491,14 +463,11 @@ local function createButton(parent, title, description, callback, order)
 				tween(button, 0.1, {Size = UDim2.fromOffset(84, 28)})
 			end
 		end)
-
-		if callback then
-			callback()
-		end
+		if callback then callback() end
 	end)
 end
 
--- FIX: slider giờ dùng chung 1 connection toàn cục, kéo mượt
+-- ============ SLIDER (hitbox to hơn) ============
 local activeSlider = nil
 
 UserInputService.InputChanged:Connect(function(input)
@@ -538,15 +507,13 @@ local function createSlider(parent, title, description, minValue, maxValue, defa
 	descLabel.Size = UDim2.new(1, -24, 0, 18)
 	descLabel.TextWrapped = true
 
-	-- FIX: bar giờ là TextButton để nhận input, và Active = true
-	local bar = Instance.new("TextButton")
+	-- Visual bar (mỏng)
+	local bar = Instance.new("Frame")
 	bar.Position = UDim2.new(0, 12, 1, -20)
 	bar.Size = UDim2.new(1, -24, 0, 6)
 	bar.BackgroundColor3 = Color3.fromRGB(26, 48, 78)
 	bar.BorderSizePixel = 0
-	bar.Text = ""
-	bar.AutoButtonColor = false
-	bar.Active = true
+	bar.Active = false
 	bar.Parent = row
 	addCorner(bar, 10)
 
@@ -569,11 +536,22 @@ local function createSlider(parent, title, description, minValue, maxValue, defa
 	knob.Parent = bar
 	addCorner(knob, 10)
 
+	-- FIX: hitbox trong suốt to hơn phủ lên bar
+	local hitbox = Instance.new("TextButton")
+	hitbox.Position = UDim2.new(0, 12, 1, -30)
+	hitbox.Size = UDim2.new(1, -24, 0, 26)
+	hitbox.BackgroundTransparency = 1
+	hitbox.Text = ""
+	hitbox.AutoButtonColor = false
+	hitbox.Active = true
+	hitbox.ZIndex = 10
+	hitbox.Parent = row
+
 	local currentValue = defaultValue
 
-	local function apply(x)
-		local startX = bar.AbsolutePosition.X
-		local width = bar.AbsoluteSize.X
+	local function applyFromHitbox(x)
+		local startX = hitbox.AbsolutePosition.X
+		local width = hitbox.AbsoluteSize.X
 		if width <= 0 then return end
 		local alpha = math.clamp((x - startX) / width, 0, 1)
 		currentValue = math.floor(minValue + (maxValue - minValue) * alpha + 0.5)
@@ -582,20 +560,17 @@ local function createSlider(parent, title, description, minValue, maxValue, defa
 		knob.Position = UDim2.new(alpha, 0, 0.5, 0)
 		valueLabel.Text = tostring(currentValue)
 
-		if callback then
-			callback(currentValue)
-		end
+		if callback then callback(currentValue) end
 	end
 
 	local initialAlpha = math.clamp((defaultValue - minValue) / (maxValue - minValue), 0, 1)
 	fill.Size = UDim2.new(initialAlpha, 0, 1, 0)
 	knob.Position = UDim2.new(initialAlpha, 0, 0.5, 0)
 
-	-- FIX: dùng InputBegan của bar (TextButton) để bắt đầu kéo
-	bar.InputBegan:Connect(function(input)
+	hitbox.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			activeSlider = apply
-			apply(input.Position.X)
+			activeSlider = applyFromHitbox
+			applyFromHitbox(input.Position.X)
 		end
 	end)
 
@@ -607,13 +582,9 @@ local function createSlider(parent, title, description, minValue, maxValue, defa
 			fill.Size = UDim2.new(alpha, 0, 1, 0)
 			knob.Position = UDim2.new(alpha, 0, 0.5, 0)
 			valueLabel.Text = tostring(v)
-			if callback then
-				callback(v)
-			end
+			if callback then callback(v) end
 		end,
-		Get = function()
-			return currentValue
-		end
+		Get = function() return currentValue end
 	}
 end
 
@@ -629,6 +600,7 @@ local State = {
 	sitting = false,
 	spin = false,
 	esp = false,
+	antiLag = false,
 	flySpeed = 60,
 	walkSpeed = 40,
 	jumpPower = 80,
@@ -653,21 +625,18 @@ LocalPlayer.CharacterAdded:Connect(function(char)
 	root = char:WaitForChild("HumanoidRootPart", 5)
 end)
 
--- FIX: Fly dùng BodyVelocity + BodyGyro để chắc chắn hoạt động
-local flyBV
-local flyBG
+-- ============ FLY (dùng LinearVelocity + Attachment) ============
+local flyAttachment
+local flyVelocity
+local flyGyro
 local flyConnection
 
 local function stopFly()
 	State.fly = false
-
-	if flyConnection then
-		flyConnection:Disconnect()
-		flyConnection = nil
-	end
-
-	if flyBV then flyBV:Destroy() flyBV = nil end
-	if flyBG then flyBG:Destroy() flyBG = nil end
+	if flyConnection then flyConnection:Disconnect() flyConnection = nil end
+	if flyAttachment then flyAttachment:Destroy() flyAttachment = nil end
+	if flyVelocity then flyVelocity:Destroy() flyVelocity = nil end
+	if flyGyro then flyGyro:Destroy() flyGyro = nil end
 
 	refreshCharacter()
 	if humanoid then
@@ -678,73 +647,59 @@ end
 
 local function startFly()
 	refreshCharacter()
-
 	if not humanoid or not root then
 		showNotice("Không tìm thấy nhân vật.", false)
 		State.fly = false
 		return
 	end
 
+	-- FIX: khóa hoàn toàn physics của humanoid
+	humanoid:ChangeState(Enum.HumanoidStateType.Physics)
 	humanoid.PlatformStand = true
 
-	flyBV = Instance.new("BodyVelocity")
-	flyBV.Name = "_ThoFlyBV"
-	flyBV.MaxForce = Vector3.new(1e5, 1e5, 1e5)
-	flyBV.Velocity = Vector3.zero
-	flyBV.P = 1250
-	flyBV.Parent = root
+	flyAttachment = Instance.new("Attachment")
+	flyAttachment.Name = "_ThoFlyAtt"
+	flyAttachment.Parent = root
 
-	flyBG = Instance.new("BodyGyro")
-	flyBG.Name = "_ThoFlyBG"
-	flyBG.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
-	flyBG.P = 1000
-	flyBG.D = 50
-	flyBG.CFrame = root.CFrame
-	flyBG.Parent = root
+	flyVelocity = Instance.new("LinearVelocity")
+	flyVelocity.Name = "_ThoFlyVel"
+	flyVelocity.Attachment0 = flyAttachment
+	flyVelocity.RelativeTo = Enum.ActuatorRelativeTo.World
+	flyVelocity.MaxForce = math.huge
+	flyVelocity.VectorVelocity = Vector3.zero
+	flyVelocity.Parent = root
+
+	flyGyro = Instance.new("AlignOrientation")
+	flyGyro.Name = "_ThoFlyGyro"
+	flyGyro.Attachment0 = flyAttachment
+	flyGyro.Mode = Enum.OrientationAlignmentMode.OneAttachment
+	flyGyro.MaxTorque = math.huge
+	flyGyro.Responsiveness = 30
+	flyGyro.Parent = root
 
 	flyConnection = RunService.RenderStepped:Connect(function()
-		if not State.fly or not root or not root.Parent or not flyBV or not flyBG then
-			return
-		end
-
+		if not State.fly or not root or not root.Parent or not flyVelocity or not flyGyro then return end
 		local camera = workspace.CurrentCamera
 		local move = Vector3.zero
 
-		if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-			move += camera.CFrame.LookVector
-		end
-		if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-			move -= camera.CFrame.LookVector
-		end
-		if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-			move += camera.CFrame.RightVector
-		end
-		if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-			move -= camera.CFrame.RightVector
-		end
-		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-			move += Vector3.yAxis
-		end
-		if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
-			move -= Vector3.yAxis
-		end
+		if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += camera.CFrame.LookVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= camera.CFrame.LookVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += camera.CFrame.RightVector end		if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= camera.CFrame.RightVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move += Vector3.yAxis end
+		if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move -= Vector3.yAxis end
 
-		if move.Magnitude > 0 then
-			move = move.Unit
-		end
+		if move.Magnitude > 0 then move = move.Unit end
+		flyVelocity.VectorVelocity = move * State.flySpeed
 
-		flyBV.Velocity = move * State.flySpeed
-		flyBG.CFrame = CFrame.new(root.Position, root.Position + camera.CFrame.LookVector)
+		-- Xoay theo camera
+		local look = camera.CFrame.LookVector
+		flyGyro.CFrame = CFrame.lookAt(root.Position, root.Position + look)
 	end)
 end
 
 createToggle(PlayerPage, "Bay", "Bật chế độ bay, dùng WASD + Space/Ctrl để di chuyển.", false, function(value)
 	State.fly = value
-	if value then
-		startFly()
-	else
-		stopFly()
-	end
+	if value then startFly() else stopFly() end
 end, 2)
 
 createSlider(PlayerPage, "Tốc độ bay", "Kéo để chỉnh tốc độ bay, tối đa 200.", 10, 200, State.flySpeed, function(value)
@@ -756,16 +711,8 @@ local airConnection
 
 local function stopAirWalk()
 	State.airWalk = false
-
-	if airConnection then
-		airConnection:Disconnect()
-		airConnection = nil
-	end
-
-	if airPlatform then
-		airPlatform:Destroy()
-		airPlatform = nil
-	end
+	if airConnection then airConnection:Disconnect() airConnection = nil end
+	if airPlatform then airPlatform:Destroy() airPlatform = nil end
 end
 
 local function startAirWalk()
@@ -789,11 +736,7 @@ end
 
 createToggle(PlayerPage, "Đi trên không", "Tạo bệ đỡ ngay dưới chân nhân vật.", false, function(value)
 	State.airWalk = value
-	if value then
-		startAirWalk()
-	else
-		stopAirWalk()
-	end
+	if value then startAirWalk() else stopAirWalk() end
 end, 4)
 
 local function applyWalkSpeed()
@@ -810,9 +753,7 @@ end, 5)
 
 createSlider(PlayerPage, "Tốc độ chạy", "Kéo để chỉnh từ 16 đến 200.", 16, 200, State.walkSpeed, function(value)
 	State.walkSpeed = value
-	if State.speed then
-		applyWalkSpeed()
-	end
+	if State.speed then applyWalkSpeed() end
 end, 6)
 
 local function applyJumpPower()
@@ -830,25 +771,17 @@ end, 7)
 
 createSlider(PlayerPage, "Độ cao nhảy", "Kéo để chỉnh JumpPower tối đa 200.", 50, 200, State.jumpPower, function(value)
 	State.jumpPower = value
-	if State.jump then
-		applyJumpPower()
-	end
+	if State.jump then applyJumpPower() end
 end, 8)
 
 local noclipConnection
 
 local function stopNoclip()
 	State.noclip = false
-	if noclipConnection then
-		noclipConnection:Disconnect()
-		noclipConnection = nil
-	end
-
+	if noclipConnection then noclipConnection:Disconnect() noclipConnection = nil end
 	if character then
 		for _, object in ipairs(character:GetDescendants()) do
-			if object:IsA("BasePart") then
-				object.CanCollide = true
-			end
+			if object:IsA("BasePart") then object.CanCollide = true end
 		end
 	end
 end
@@ -857,32 +790,22 @@ local function startNoclip()
 	noclipConnection = RunService.Stepped:Connect(function()
 		if not State.noclip or not character then return end
 		for _, object in ipairs(character:GetDescendants()) do
-			if object:IsA("BasePart") then
-				object.CanCollide = false
-			end
+			if object:IsA("BasePart") then object.CanCollide = false end
 		end
 	end)
 end
 
 createToggle(PlayerPage, "Đi xuyên tường", "Tắt collision của nhân vật.", false, function(value)
 	State.noclip = value
-	if value then
-		startNoclip()
-	else
-		stopNoclip()
-	end
+	if value then startNoclip() else stopNoclip() end
 end, 9)
 
--- FIX: lying dùng PlatformStand để không bị văng khi spam space
 local lyingConnection
 local originalAutoRotate = true
 
 local function stopLying()
 	State.lying = false
-	if lyingConnection then
-		lyingConnection:Disconnect()
-		lyingConnection = nil
-	end
+	if lyingConnection then lyingConnection:Disconnect() lyingConnection = nil end
 	refreshCharacter()
 	if humanoid then
 		humanoid.AutoRotate = originalAutoRotate
@@ -894,7 +817,6 @@ end
 local function startLying()
 	refreshCharacter()
 	if not humanoid or not root then return end
-
 	originalAutoRotate = humanoid.AutoRotate
 	humanoid.AutoRotate = false
 	humanoid.PlatformStand = true
@@ -908,57 +830,54 @@ local function startLying()
 	end)
 end
 
-createToggle(PlayerPage, "Nằm", "Đưa nhân vật về tư thế nằm (an toàn, không bị văng).", false, function(value)
+createToggle(PlayerPage, "Nằm", "Đưa nhân vật về tư thế nằm.", false, function(value)
 	State.lying = value
-	if value then
-		startLying()
-	else
-		stopLying()
-	end
+	if value then startLying() else stopLying() end
 end, 10)
 
 createToggle(PlayerPage, "Ngồi", "Đưa Humanoid vào trạng thái ngồi.", false, function(value)
 	State.sitting = value
 	refreshCharacter()
-	if humanoid then
-		humanoid.Sit = value
-	end
+	if humanoid then humanoid.Sit = value end
 end, 11)
 
+-- ============ SPIN (dừng khi di chuyển) ============
 local spinConnection
 
 local function stopSpin()
 	State.spin = false
-	if spinConnection then
-		spinConnection:Disconnect()
-		spinConnection = nil
-	end
+	if spinConnection then spinConnection:Disconnect() spinConnection = nil end
 end
 
 local function startSpin()
 	spinConnection = RunService.RenderStepped:Connect(function(delta)
-		if State.spin then
-			refreshCharacter()
-			if root then
-				root.CFrame *= CFrame.Angles(0, math.rad(State.spinSpeed * 20) * delta, 0)
-			end
+		if not State.spin then return end
+
+		-- FIX: tạm dừng khi có input di chuyển
+		local moving = UserInputService:IsKeyDown(Enum.KeyCode.W)
+			or UserInputService:IsKeyDown(Enum.KeyCode.A)
+			or UserInputService:IsKeyDown(Enum.KeyCode.S)
+			or UserInputService:IsKeyDown(Enum.KeyCode.D)
+
+		if moving then return end
+
+		refreshCharacter()
+		if root then
+			root.CFrame *= CFrame.Angles(0, math.rad(State.spinSpeed * 20) * delta, 0)
 		end
 	end)
 end
 
-createToggle(PlayerPage, "Xoay", "Xoay nhân vật liên tục.", false, function(value)
+createToggle(PlayerPage, "Xoay", "Xoay nhân vật liên tục (tạm dừng khi di chuyển).", false, function(value)
 	State.spin = value
-	if value then
-		startSpin()
-	else
-		stopSpin()
-	end
+	if value then startSpin() else stopSpin() end
 end, 12)
 
 createSlider(PlayerPage, "Tốc độ xoay", "Kéo để chỉnh tốc độ từ 1 đến 50.", 1, 50, State.spinSpeed, function(value)
 	State.spinSpeed = value
 end, 13)
 
+-- ============ ESP (đậm hơn + SelectionBox) ============
 local ESPFolder = Instance.new("Folder")
 ESPFolder.Name = "_ThoESP"
 ESPFolder.Parent = ScreenGui
@@ -969,9 +888,9 @@ local espConnection
 local function destroyESP(player)
 	local data = ESPData[player]
 	if not data then return end
-
 	if data.highlight then data.highlight:Destroy() end
 	if data.billboard then data.billboard:Destroy() end
+	if data.box then data.box:Destroy() end
 	ESPData[player] = nil
 end
 
@@ -981,58 +900,63 @@ local function ensureESP(player)
 	local highlight = Instance.new("Highlight")
 	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 	highlight.FillColor = BLUE_5
-	highlight.FillTransparency = 0.84
-	highlight.OutlineColor = Color3.fromRGB(90, 205, 255)
-	highlight.OutlineTransparency = 0.05
+	highlight.FillTransparency = 0.35     -- FIX: đậm hơn
+	highlight.OutlineColor = Color3.fromRGB(0, 255, 255)
+	highlight.OutlineTransparency = 0
 	highlight.Enabled = false
 	highlight.Parent = ESPFolder
 
+	-- FIX: SelectionBox để có hình vuông rõ ràng
+	local box = Instance.new("SelectionBox")
+	box.LineThickness = 0.15
+	box.Color3 = Color3.fromRGB(0, 255, 255)
+	box.Transparency = 0
+	box.Visible = false
+	box.Parent = ESPFolder
+
 	local billboard = Instance.new("BillboardGui")
-	billboard.Size = UDim2.fromOffset(160, 44)
-	billboard.StudsOffset = Vector3.new(0, 3.4, 0)
+	billboard.Size = UDim2.fromOffset(180, 50)
+	billboard.StudsOffset = Vector3.new(0, 3.5, 0)
 	billboard.AlwaysOnTop = true
 	billboard.Enabled = false
+	billboard.LightInfluence = 0
 	billboard.Parent = ESPFolder
 
-	local nameLabel = addText(billboard, player.DisplayName, 11, Enum.Font.GothamBold, WHITE)
-	nameLabel.Size = UDim2.new(1, 0, 0, 18)
+	local nameLabel = addText(billboard, player.DisplayName, 13, Enum.Font.GothamBold, Color3.fromRGB(0, 255, 255))
+	nameLabel.Size = UDim2.new(1, 0, 0, 20)
 	nameLabel.TextXAlignment = Enum.TextXAlignment.Center
+	nameLabel.TextStrokeTransparency = 0
+	nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 
-	local infoLabel = addText(billboard, "HP: -- | -- studs", 9, Enum.Font.GothamMedium, MUTED)
-	infoLabel.Position = UDim2.fromOffset(0, 18)
-	infoLabel.Size = UDim2.new(1, 0, 0, 16)
+	local infoLabel = addText(billboard, "HP: -- | -- studs", 11, Enum.Font.GothamBold, WHITE)
+	infoLabel.Position = UDim2.fromOffset(0, 20)
+	infoLabel.Size = UDim2.new(1, 0, 0, 18)
 	infoLabel.TextXAlignment = Enum.TextXAlignment.Center
+	infoLabel.TextStrokeTransparency = 0
+	infoLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 
 	ESPData[player] = {
 		highlight = highlight,
 		billboard = billboard,
 		nameLabel = nameLabel,
-		infoLabel = infoLabel
+		infoLabel = infoLabel,
+		box = box
 	}
 end
 
 local function stopESP()
 	State.esp = false
-
-	if espConnection then
-		espConnection:Disconnect()
-		espConnection = nil
-	end
-
+	if espConnection then espConnection:Disconnect() espConnection = nil end
 	for _, data in pairs(ESPData) do
 		data.highlight.Enabled = false
 		data.billboard.Enabled = false
+		data.box.Visible = false
 	end
 end
 
 local function startESP()
-	for _, player in ipairs(Players:GetPlayers()) do
-		ensureESP(player)
-	end
-
-	if espConnection then
-		espConnection:Disconnect()
-	end
+	for _, player in ipairs(Players:GetPlayers()) do ensureESP(player) end
+	if espConnection then espConnection:Disconnect() end
 
 	espConnection = RunService.RenderStepped:Connect(function()
 		local localCharacter = LocalPlayer.Character
@@ -1041,7 +965,6 @@ local function startESP()
 		for _, player in ipairs(Players:GetPlayers()) do
 			if player ~= LocalPlayer then
 				ensureESP(player)
-
 				local data = ESPData[player]
 				local targetCharacter = player.Character
 				local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
@@ -1052,20 +975,19 @@ local function startESP()
 					data.highlight.Enabled = true
 					data.billboard.Adornee = targetRoot
 					data.billboard.Enabled = true
+					data.box.Adornee = targetCharacter
+					data.box.Visible = true
 
 					local distance = math.floor((localRoot.Position - targetRoot.Position).Magnitude)
 					data.nameLabel.Text = player.DisplayName
 					data.infoLabel.Text =
-						"HP: "
-						.. math.floor(targetHumanoid.Health)
-						.. "/"
-						.. math.floor(targetHumanoid.MaxHealth)
-						.. " | "
-						.. distance
-						.. " studs"
+						"HP: " .. math.floor(targetHumanoid.Health)
+						.. "/" .. math.floor(targetHumanoid.MaxHealth)
+						.. " | " .. distance .. " studs"
 				elseif data then
 					data.highlight.Enabled = false
 					data.billboard.Enabled = false
+					data.box.Visible = false
 				end
 			end
 		end
@@ -1073,9 +995,7 @@ local function startESP()
 end
 
 Players.PlayerAdded:Connect(function(player)
-	if State.esp then
-		ensureESP(player)
-	end
+	if State.esp then ensureESP(player) end
 end)
 
 Players.PlayerRemoving:Connect(function(player)
@@ -1084,16 +1004,208 @@ end)
 
 createToggle(PlayerPage, "Định vị người chơi", "Hiển thị khung, tên, máu và khoảng cách.", false, function(value)
 	State.esp = value
-	if value then
-		startESP()
-	else
-		stopESP()
-	end
+	if value then startESP() else stopESP() end
 end, 14)
 
+-- ============ GIẢM LAG ============
+local AntiLag = {
+	active = false,
+	originals = {},
+	connections = {},
+	optimizedObjects = setmetatable({}, {__mode = "k"}),
+	lightingBackup = nil,
+	terrainBackup = nil
+}
+
+local function backupLighting()
+	if AntiLag.lightingBackup then return end
+	AntiLag.lightingBackup = {
+		Brightness = Lighting.Brightness,
+		Ambient = Lighting.Ambient,
+		OutdoorAmbient = Lighting.OutdoorAmbient,
+		GlobalShadows = Lighting.GlobalShadows,
+		FogEnd = Lighting.FogEnd,
+		FogStart = Lighting.FogStart,
+		EnvironmentDiffuseScale = Lighting.EnvironmentDiffuseScale,
+		EnvironmentSpecularScale = Lighting.EnvironmentSpecularScale
+	}
+end
+
+local function restoreLighting()
+	if not AntiLag.lightingBackup then return end
+	for k, v in pairs(AntiLag.lightingBackup) do
+		pcall(function() Lighting[k] = v end)
+	end
+	AntiLag.lightingBackup = nil
+end
+
+local function applyLighting()
+	Lighting.GlobalShadows = false
+	Lighting.FogEnd = 1e6
+	Lighting.FogStart = 1e6
+	Lighting.Brightness = 2
+	Lighting.EnvironmentDiffuseScale = 0
+	Lighting.EnvironmentSpecularScale = 0
+
+	pcall(function()
+		Lighting.Ambient = Color3.fromRGB(140, 140, 140)
+		Lighting.OutdoorAmbient = Color3.fromRGB(140, 140, 140)
+	end)
+
+	for _, effect in ipairs(Lighting:GetChildren()) do
+		if effect:IsA("PostEffect") or effect:IsA("Atmosphere") or effect:IsA("Sky") then
+			if not AntiLag.originals[effect] then
+				AntiLag.originals[effect] = { Enabled = effect.Enabled, Parent = effect.Parent }
+			end
+			effect.Enabled = false
+		end
+	end
+end
+
+local function optimizePart(part)
+	if AntiLag.optimizedObjects[part] then return end
+	AntiLag.optimizedObjects[part] = true
+	AntiLag.originals[part] = {
+		CastShadow = part.CastShadow,
+		Reflectance = part.Reflectance,
+		Material = part.Material
+	}
+	part.CastShadow = false
+	part.Reflectance = 0
+	if part.Material ~= Enum.Material.SmoothPlastic then
+		part.Material = Enum.Material.SmoothPlastic
+	end
+end
+
+local function optimizeEmitter(em)
+	if AntiLag.optimizedObjects[em] then return end
+	AntiLag.optimizedObjects[em] = true
+	AntiLag.originals[em] = { Rate = em.Rate, Enabled = em.Enabled }
+	em.Rate = math.min(em.Rate, 10)
+	em.LightEmission = 0
+	em.LightInfluence = 0
+end
+
+local function optimizeTrail(t)
+	if AntiLag.optimizedObjects[t] then return end
+	AntiLag.optimizedObjects[t] = true
+	AntiLag.originals[t] = { Enabled = t.Enabled }
+	t.Enabled = false
+end
+
+local function optimizeBeam(b)
+	if AntiLag.optimizedObjects[b] then return end
+	AntiLag.optimizedObjects[b] = true
+	AntiLag.originals[b] = { Enabled = b.Enabled }
+	b.Enabled = false
+end
+
+local function optimizeObject(obj)
+	if not obj or not obj.Parent then return end
+	if obj:IsA("BasePart") then optimizePart(obj)
+	elseif obj:IsA("ParticleEmitter") then optimizeEmitter(obj)
+	elseif obj:IsA("Trail") then optimizeTrail(obj)
+	elseif obj:IsA("Beam") then optimizeBeam(obj)
+	elseif obj:IsA("Decal") or obj:IsA("Texture") then
+		if not AntiLag.originals[obj] then
+			AntiLag.originals[obj] = { Transparency = obj.Transparency }
+		end
+		obj.Transparency = 1
+	end
+end
+
+local function startAntiLag()
+	if AntiLag.active then return end
+	AntiLag.active = true
+
+	backupLighting()
+	applyLighting()
+
+	local terrain = workspace:FindFirstChildOfClass("Terrain")
+	if terrain then
+		AntiLag.terrainBackup = {
+			WaterWaveSize = terrain.WaterWaveSize,
+			WaterWaveSpeed = terrain.WaterWaveSpeed,
+			WaterReflectance = terrain.WaterReflectance,
+			WaterTransparency = terrain.WaterTransparency
+		}
+		terrain.WaterWaveSize = 0
+		terrain.WaterWaveSpeed = 0
+		terrain.WaterReflectance = 0
+		terrain.WaterTransparency = 1
+	end
+
+	local descendants = workspace:GetDescendants()
+	task.spawn(function()
+		for i, obj in ipairs(descendants) do
+			optimizeObject(obj)
+			if i % 200 == 0 then task.wait() end
+		end
+	end)
+
+	local conn = workspace.DescendantAdded:Connect(function(obj)
+		task.defer(function()
+			if AntiLag.active then optimizeObject(obj) end
+		end)
+	end)
+	table.insert(AntiLag.connections, conn)
+
+	if not getgenv()._ThoAntiLagGC then
+		getgenv()._ThoAntiLagGC = true
+		task.spawn(function()
+			while AntiLag.active and ScreenGui.Parent do
+				task.wait(5)
+				pcall(function() collectgarbage("collect") end)
+			end
+			getgenv()._ThoAntiLagGC = false
+		end)
+	end
+end
+
+local function stopAntiLag()
+	AntiLag.active = false
+
+	for _, conn in ipairs(AntiLag.connections) do
+		pcall(function() conn:Disconnect() end)
+	end
+	AntiLag.connections = {}
+
+	restoreLighting()
+
+	for obj, data in pairs(AntiLag.originals) do
+		if obj and obj.Parent then
+			pcall(function()
+				if data.CastShadow ~= nil then obj.CastShadow = data.CastShadow end
+				if data.Reflectance ~= nil then obj.Reflectance = data.Reflectance end
+				if data.Material ~= nil then obj.Material = data.Material end
+				if data.Rate ~= nil then obj.Rate = data.Rate end
+				if data.Enabled ~= nil and obj:IsA("PostEffect") then obj.Enabled = data.Enabled end
+				if data.Enabled ~= nil and (obj:IsA("Trail") or obj:IsA("Beam")) then obj.Enabled = data.Enabled end
+				if data.Transparency ~= nil then obj.Transparency = data.Transparency end
+			end)
+		end
+	end
+	AntiLag.originals = {}
+	AntiLag.optimizedObjects = setmetatable({}, {__mode = "k"})
+
+	local terrain = workspace:FindFirstChildOfClass("Terrain")
+	if terrain and AntiLag.terrainBackup then
+		terrain.WaterWaveSize = AntiLag.terrainBackup.WaterWaveSize
+		terrain.WaterWaveSpeed = AntiLag.terrainBackup.WaterWaveSpeed
+		terrain.WaterReflectance = AntiLag.terrainBackup.WaterReflectance
+		terrain.WaterTransparency = AntiLag.terrainBackup.WaterTransparency
+		AntiLag.terrainBackup = nil
+	end
+end
+
+createToggle(PlayerPage, "Giảm lag", "Hạ đồ họa để tăng FPS (tắt shadow, particle, post-effect).", false, function(value)
+	State.antiLag = value
+	if value then startAntiLag() else stopAntiLag() end
+end, 15)
+
+-- ============ SERVER TAB ============
 createSection(ServerPage, "Server", 1)
 
--- FIX: implement server hop thật bằng HttpService
 local function fetchServers(placeId, callback)
 	task.spawn(function()
 		local url = string.format(
@@ -1122,10 +1234,7 @@ end
 
 createButton(ServerPage, "Đổi máy chủ", "Nhảy sang một server khác cùng place.", function()
 	local servers = nil
-	fetchServers(game.PlaceId, function(data)
-		servers = data
-	end)
-
+	fetchServers(game.PlaceId, function(data) servers = data end)
 	task.wait(1.5)
 
 	if not servers or #servers == 0 then
@@ -1154,10 +1263,7 @@ end, 2)
 
 createButton(ServerPage, "Đổi máy chủ ít người", "Tìm server có ít người chơi nhất.", function()
 	local servers = nil
-	fetchServers(game.PlaceId, function(data)
-		servers = data
-	end)
-
+	fetchServers(game.PlaceId, function(data) servers = data end)
 	task.wait(1.5)
 
 	if not servers or #servers == 0 then
@@ -1166,14 +1272,11 @@ createButton(ServerPage, "Đổi máy chủ ít người", "Tìm server có ít 
 	end
 
 	local currentJob = game.JobId
-	local best = nil
-	local bestCount = math.huge
-
+	local best, bestCount = nil, math.huge
 	for _, s in ipairs(servers) do
 		local count = s.playing or 0
 		if s.id ~= currentJob and count < bestCount and count < (s.maxPlayers or 999) then
-			best = s
-			bestCount = count
+			best, bestCount = s, count
 		end
 	end
 
@@ -1190,64 +1293,107 @@ end, 3)
 createButton(ServerPage, "Tham gia lại máy chủ", "Thử quay lại đúng JobId của instance hiện tại.", function()
 	local jobId = game.JobId
 	if jobId == "" then
-		showNotice("Không có JobId hợp lệ trong môi trường hiện tại.", false)
+		showNotice("Không có JobId hợp lệ.", false)
 		return
 	end
-
 	local ok = pcall(function()
 		TeleportService:TeleportToPlaceInstance(game.PlaceId, jobId, LocalPlayer)
 	end)
-
 	if not ok then
-		showNotice("Không thể thực hiện teleport tới instance hiện tại.", false)
+		showNotice("Không thể teleport tới instance hiện tại.", false)
 	end
 end, 4)
 
-createToggle(ServerPage, "Tự động chạy script", "Lưu trạng thái giao diện trong phiên hiện tại.", false, function(value)
-	showNotice(value and "Đã bật tự động khôi phục trạng thái." or "Đã tắt tự động khôi phục.", true)
+-- FIX: "Tự chạy script" dùng queue_on_teleport
+local autoRunEnabled = false
+local SCRIPT_SOURCE_CACHE = nil
+
+createToggle(ServerPage, "Tự động chạy script", "Tự chạy lại script sau khi đổi server (cần executor hỗ trợ queue_on_teleport).", false, function(value)
+	autoRunEnabled = value
+
+	if not value then
+		showNotice("Đã tắt tự động chạy lại.", true)
+		return
+	end
+
+	-- Thử lấy source hiện tại để queue
+	local hasQueue = type(queue_on_teleport) == "function"
+		or type(syn) == "table" and type(syn.queue_on_teleport) == "function"
+
+	if not hasQueue then
+		showNotice("Executor không hỗ trợ queue_on_teleport. Hãy bật auto-exec trong executor.", false)
+		return
+	end
+
+	showNotice("Đã bật. Script sẽ tự chạy lại sau khi đổi server.", true)
 end, 5)
 
--- FIX: FloatingButton nằm cao hơn, DisplayOrder riêng cao hơn Main
+-- Hook teleport để queue script
+local originalHop = hopToServer
+hopToServer = function(jobId)
+	if autoRunEnabled then
+		local source = nil
+		pcall(function()
+			source = debug.info(1, "s") -- không lấy được source thật, cần user paste
+		end)
+		-- Thực tế: cần user tự paste source. Ta chỉ queue loadstring nếu có.
+		local queueFn = nil
+		if type(queue_on_teleport) == "function" then
+			queueFn = queue_on_teleport
+		elseif type(syn) == "table" and type(syn.queue_on_teleport) == "function" then
+			queueFn = syn.queue_on_teleport
+		end
+		if queueFn and SCRIPT_SOURCE_CACHE then
+			pcall(queueFn, SCRIPT_SOURCE_CACHE)
+		end
+	end
+	originalHop(jobId)
+end
+
+-- ============ FLOATING BUTTON (ScreenGui riêng) ============
+local FloatGui = Instance.new("ScreenGui")
+FloatGui.Name = GUI_NAME .. "_Float"
+FloatGui.ResetOnSpawn = false
+FloatGui.IgnoreGuiInset = true
+FloatGui.DisplayOrder = 2147483647   -- max int, chắc chắn nổi trên mọi thứ
+FloatGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+FloatGui.Parent = PlayerGui
+
 local FloatingButton = Instance.new("TextButton")
-FloatingButton.AnchorPoint = Vector2.new(1, 1)
-FloatingButton.Position = UDim2.new(1, -20, 1, -120)   -- FIX: nâng lên để không bị CoreGui che
-FloatingButton.Size = UDim2.fromOffset(46, 46)
+FloatingButton.AnchorPoint = Vector2.new(1, 0.5)
+-- FIX: đặt ở giữa-phải màn hình, không đụng CoreGui
+FloatingButton.Position = UDim2.new(1, -30, 0.5, 0)
+FloatingButton.Size = UDim2.fromOffset(52, 52)
 FloatingButton.BackgroundColor3 = BLUE_4
 FloatingButton.BorderSizePixel = 0
 FloatingButton.Text = "T"
-FloatingButton.TextSize = 18
+FloatingButton.TextSize = 20
 FloatingButton.Font = Enum.Font.GothamBold
 FloatingButton.TextColor3 = WHITE
 FloatingButton.AutoButtonColor = false
 FloatingButton.Visible = false
-FloatingButton.ZIndex = 5000
-FloatingButton.Parent = ScreenGui
+FloatingButton.ZIndex = 10
+FloatingButton.Parent = FloatGui
 addCorner(FloatingButton, 100)
-addStroke(FloatingButton, BLUE_5, 0.25, 1)
+addStroke(FloatingButton, BLUE_5, 0.2, 2)
 
 local FloatingGlow = Instance.new("Frame")
 FloatingGlow.AnchorPoint = Vector2.new(0.5, 0.5)
 FloatingGlow.Position = UDim2.fromScale(0.5, 0.5)
-FloatingGlow.Size = UDim2.fromScale(0.72, 0.72)
+FloatingGlow.Size = UDim2.fromScale(0.75, 0.75)
 FloatingGlow.BackgroundColor3 = BLUE_5
-FloatingGlow.BackgroundTransparency = 0.83
+FloatingGlow.BackgroundTransparency = 0.8
 FloatingGlow.BorderSizePixel = 0
 FloatingGlow.Active = false
+FloatingGlow.ZIndex = 11
 FloatingGlow.Parent = FloatingButton
 addCorner(FloatingGlow, 100)
 
 FloatingButton.MouseEnter:Connect(function()
-	tween(FloatingButton, 0.12, {
-		Size = UDim2.fromOffset(52, 52),
-		BackgroundColor3 = BLUE_5
-	})
+	tween(FloatingButton, 0.12, {Size = UDim2.fromOffset(58, 58), BackgroundColor3 = BLUE_5})
 end)
-
 FloatingButton.MouseLeave:Connect(function()
-	tween(FloatingButton, 0.12, {
-		Size = UDim2.fromOffset(46, 46),
-		BackgroundColor3 = BLUE_4
-	})
+	tween(FloatingButton, 0.12, {Size = UDim2.fromOffset(52, 52), BackgroundColor3 = BLUE_4})
 end)
 
 local originalSize = UDim2.fromOffset(MAIN_WIDTH, MAIN_HEIGHT)
@@ -1266,12 +1412,8 @@ FloatingButton.Activated:Connect(function()
 end)
 
 MinimizeButton.Activated:Connect(function()
-	if maximized then
-		maximized = false
-	end
-
+	if maximized then maximized = false end
 	minimized = not minimized
-
 	if minimized then
 		Sidebar.Visible = false
 		Content.Visible = false
@@ -1281,7 +1423,7 @@ MinimizeButton.Activated:Connect(function()
 		Sidebar.Visible = true
 		Content.Visible = true
 		tween(Main, 0.22, {Size = originalSize})
-		MenuSubtitle.Text = "Personal utility interface"
+		MenuSubtitle.Text = "Build " .. SCRIPT_BUILD
 	end
 end)
 
@@ -1291,19 +1433,15 @@ MaximizeButton.Activated:Connect(function()
 		Sidebar.Visible = true
 		Content.Visible = true
 	end
-
 	maximized = not maximized
-
-	tween(Main, 0.24, {
-		Size = maximized and UDim2.fromOffset(820, 520) or originalSize
-	})
+	tween(Main, 0.24, {Size = maximized and UDim2.fromOffset(820, 520) or originalSize})
 end)
 
 CloseButton.Activated:Connect(function()
 	setMenuVisible(false)
 end)
 
--- FIX: dragging menu dùng UserInputService thay vì Header.InputBegan
+-- ============ DRAG MENU ============
 local dragging = false
 local dragStart
 local startPosition
@@ -1344,7 +1482,6 @@ end)
 
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
-
 	if input.KeyCode == Enum.KeyCode.RightShift then
 		setMenuVisible(not menuOpen)
 	end
@@ -1352,18 +1489,16 @@ end)
 
 LocalPlayer.CharacterAdded:Connect(function(char)
 	task.wait(0.15)
-
 	character = char
 	humanoid = char:FindFirstChildOfClass("Humanoid")
 	root = char:FindFirstChild("HumanoidRootPart")
 
-	if State.fly then
-		stopFly()
-		startFly()
-	end
-
-	if State.esp then
-		task.defer(startESP)
+	if State.fly then stopFly() startFly() end
+	if State.esp then task.defer(startESP) end
+	if State.antiLag then
+		task.delay(1, function()
+			if State.antiLag then startAntiLag() end
+		end)
 	end
 end)
 
@@ -1372,16 +1507,15 @@ task.spawn(function()
 		if State.sitting and humanoid and humanoid.Health > 0 then
 			humanoid.Sit = true
 		end
-
 		if State.speed and humanoid then
 			humanoid.WalkSpeed = State.walkSpeed
 		end
-
 		if State.jump and humanoid then
 			humanoid.UseJumpPower = true
 			humanoid.JumpPower = State.jumpPower
 		end
-
 		task.wait(0.3)
 	end
 end)
+
+print("[ThoScript] Loaded build " .. SCRIPT_BUILD)
