@@ -1,9 +1,8 @@
--- [ThoScript] BUILD: 2026-09-15 #21
--- - Fix duplicate camera helpers gây lỗi script
--- - Move FloatGui creation lên sớm
--- - Safe zone offset giảm còn 35 studs
--- - Magic teleport order 16 (ngay dưới safe zone, trên "Khác")
-local SCRIPT_BUILD = "2026-09-15-#21"
+-- [ThoScript] BUILD: 2026-09-15 #22
+-- - Fix safe zone bay vô hạn: scan 1 lần, targetY cố định
+-- - Nâng cấp shader mưa: 2 layer + splash/spray + color grading + sấm
+-- - Nâng cấp shader thư giãn: hoàng hôn + bird/wind sound
+local SCRIPT_BUILD = "2026-09-15-#22"
 local AUTORUN_URL = "https://raw.githubusercontent.com/thomaderobloxtools/script-only-use/main/tho.lua"
 local SAVE_FILE = "tho_script_settings.json"
 
@@ -72,9 +71,6 @@ local function addText(parent, text, size, font, color)
 	return label
 end
 
--- ============================================================
--- SCREEN GUI + FLOAT GUI (tạo sớm)
--- ============================================================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = GUI_NAME
 ScreenGui.ResetOnSpawn = false
@@ -311,9 +307,6 @@ local VisualPage = createPage("Visual")
 local ServerPage = createPage("Server")
 local SettingsPage = createPage("Settings")
 
--- ============================================================
--- NOTIFICATION
--- ============================================================
 local NOTICE_Z = 999999
 
 local function showNotice(text, success)
@@ -826,9 +819,6 @@ local function createSlider(parent, title, description, minValue, maxValue, defa
 	}
 end
 
--- ============================================================
--- PLAYER STATE
--- ============================================================
 local State = {
 	fly = false,
 	airWalk = false,
@@ -886,9 +876,6 @@ local ALL_STATES = {
 	Enum.HumanoidStateType.Swimming
 }
 
--- ============================================================
--- CAMERA HELPERS (khai báo DUY NHẤT 1 lần, dùng chung)
--- ============================================================
 local magicActive = false
 local magicSplit = false
 local freeCamActive = false
@@ -944,9 +931,6 @@ UserInputService.InputChanged:Connect(function(input)
 	end
 end)
 
--- ============================================================
--- PLAYER PAGE - Section Player
--- ============================================================
 createSection(PlayerPage, "Player", 1)
 
 local flyConnection, flyBV
@@ -1202,27 +1186,22 @@ createSlider(PlayerPage, "Tốc độ xoay", "Kéo để chỉnh tốc độ t�
 	State.spinSpeed = value
 end, 13)
 
--- ============================================================
--- SAFE ZONE (offset 35 studs)
--- ============================================================
 local safeZoneActive = false
 local safeZoneSavedPos = nil
 local safeZoneBP = nil
 local safeZoneLoopThread = nil
+local safeZoneTargetY = nil
 
 local SAFE_HEIGHT_OFFSET = 60
 
-local function getSafeHeight()
-	refreshCharacter()
-	if not root then return nil end
-	local pos = root.Position
-	local maxY = pos.Y
+local function scanGroundHeight(originPos)
+	local maxY = originPos.Y
 
-	for _, radius in ipairs({80, 200, 400}) do
+	for _, radius in ipairs({50, 150, 300}) do
 		local ok, parts = pcall(function()
 			return workspace:GetPartBoundsInBox(
-				CFrame.new(pos.X, pos.Y + 100, pos.Z),
-				Vector3.new(radius * 2, 300, radius * 2)
+				CFrame.new(originPos.X, originPos.Y, originPos.Z),
+				Vector3.new(radius * 2, 400, radius * 2)
 			)
 		end)
 		if ok and parts then
@@ -1262,6 +1241,7 @@ local function stopSafeZone(teleportBack)
 	end
 
 	safeZoneSavedPos = nil
+	safeZoneTargetY = nil
 end
 
 local function startSafeZone()
@@ -1282,22 +1262,35 @@ local function startSafeZone()
 	safeZoneLoopThread = task.spawn(function()
 		task.wait(3)
 
+		if not safeZoneActive or not safeZoneSavedPos then return end
+
+		local groundY = scanGroundHeight(safeZoneSavedPos)
+		safeZoneTargetY = groundY + SAFE_HEIGHT_OFFSET
+
+		showNotice("Vùng an toàn cao " .. math.floor(safeZoneTargetY - safeZoneSavedPos.Y) .. " studs.", true)
+
 		while safeZoneActive do
 			refreshCharacter()
 
-			if root and humanoid and humanoid.Health > 0 then
-				local highestY = getSafeHeight() or root.Position.Y
-				local targetY = highestY + SAFE_HEIGHT_OFFSET
+			if root and humanoid and humanoid.Health > 0 and safeZoneTargetY then
+				local dx = math.abs(root.Position.X - safeZoneSavedPos.X)
+				local dz = math.abs(root.Position.Z - safeZoneSavedPos.Z)
+
+				if dx > 500 or dz > 500 then
+					safeZoneSavedPos = root.Position
+					local newGroundY = scanGroundHeight(safeZoneSavedPos)
+					safeZoneTargetY = newGroundY + SAFE_HEIGHT_OFFSET
+				end
 
 				if not safeZoneBP or not safeZoneBP.Parent then
 					safeZoneBP = Instance.new("BodyPosition")
 					safeZoneBP.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-					safeZoneBP.P = 1e5
-					safeZoneBP.D = 1000
+					safeZoneBP.P = 5e4
+					safeZoneBP.D = 3e3
 					safeZoneBP.Parent = root
 				end
 
-				safeZoneBP.Position = Vector3.new(root.Position.X, targetY, root.Position.Z)
+				safeZoneBP.Position = Vector3.new(root.Position.X, safeZoneTargetY, root.Position.Z)
 
 				pcall(function()
 					root.AssemblyLinearVelocity = Vector3.zero
@@ -1310,14 +1303,12 @@ local function startSafeZone()
 				end
 			end
 
-			task.wait(0.4)
+			task.wait(0.3)
 		end
 	end)
-
-	showNotice("Vùng an toàn đang bật (cách " .. SAFE_HEIGHT_OFFSET .. " studs).", true)
 end
 
-createToggle(PlayerPage, "Tự động di chuyển tới vùng an toàn", "Bay 35 studs trên map, tự theo dõi khi map đổi. Bật để treo AFK.", false, function(value)
+createToggle(PlayerPage, "Tự động di chuyển tới vùng an toàn", "Bay lên 60 studs trên map 1 lần, giữ cố định để treo AFK.", false, function(value)
 	State.safeZone = value
 	if value then
 		startSafeZone()
@@ -1338,9 +1329,6 @@ createButton(PlayerPage, "Di chuyển xuống lại mặt đất", "Quay về v�
 	end
 end, 15)
 
--- ============================================================
--- MAGIC TELEPORT (order 16 - ngay dưới safe zone, trên "Khác")
--- ============================================================
 local function startMagicMode()
 	refreshCharacter()
 	if not root or not humanoid then
@@ -1529,7 +1517,6 @@ magicToggle = createToggle(PlayerPage, "Dịch chuyển ảo thuật", "Bấm CA
 	end
 end, 16)
 
--- "Khác" section
 createSection(PlayerPage, "Khác", 26)
 
 createButton(PlayerPage, "Đặt lại nhân vật", "Reset nhân vật về trạng thái ban đầu.", function()
@@ -1562,9 +1549,6 @@ createButton(PlayerPage, "Dịch chuyển về điểm hồi sinh", "Teleport nh
 	end
 end, 28)
 
--- ============================================================
--- ESP TAB
--- ============================================================
 createSection(ESPPage, "Người chơi", 1)
 
 local ESPFolder = Instance.new("Folder")
@@ -1695,7 +1679,6 @@ createToggle(ESPPage, "Định vị người chơi", "Hiển thị khung, tên, 
 	if value then startESP() else stopESP() end
 end, 2)
 
--- ESP Pro
 local ESPPro = {
 	active = false,
 	folder = nil,
@@ -1955,7 +1938,6 @@ createToggle(ESPPage, "Định vị nâng cao", "Skeleton ESP + tia chỉ hướ
 	if value then startESPPro() else stopESPPro() end
 end, 3)
 
--- NPC ESP
 local NPCESP = {
 	active = false,
 	folder = nil,
@@ -2131,7 +2113,6 @@ createToggle(ESPPage, "Định vị NPC", "Hiển thị tên, máu, khoảng cá
 	if value then startNPCESP() else stopNPCESP() end
 end, 4)
 
--- Team ESP
 local TeamESP = {
 	active = false,
 	folder = nil,
@@ -2288,9 +2269,6 @@ createToggle(ESPPage, "Định vị đồng đội", "Hiển thị khung xanh l�
 	if value then startTeamESP() else stopTeamESP() end
 end, 5)
 
--- ============================================================
--- VISUAL TAB
--- ============================================================
 createSection(VisualPage, "Visual", 1)
 
 local AntiLag = {
@@ -2597,9 +2575,6 @@ createToggle(VisualPage, "Màn hình đen", "Che toàn màn hình màu đen (tre
 	blackOverlay.Visible = value
 end, 4)
 
--- ============================================================
--- FREE CAM (Xem từ xa) — dùng chung camera helpers
--- ============================================================
 local function renderFreeCam(dt)
 	if not freeCamActive then return end
 	local cam = workspace.CurrentCamera
@@ -2662,9 +2637,6 @@ createToggle(VisualPage, "Xem từ xa", "Nhân vật đứng yên, camera bay t�
 	if value then startFreeCam() else stopFreeCam() end
 end, 5)
 
--- ============================================================
--- SHADER: BẢN ĐỒ SÁNG
--- ============================================================
 local BrightMap = {
 	active = false,
 	backup = nil,
@@ -2717,87 +2689,166 @@ local function stopBrightMap()
 	end
 end
 
--- ============================================================
--- SHADER: BẢN ĐỒ MƯA
--- ============================================================
 local RainMap = {
 	active = false,
 	rainTop = nil,
 	rainBottom = nil,
-	rainDrop = nil,
+	rainFar = nil,
+	rainNear = nil,
 	rainSplash = nil,
-	rainSound = nil
+	rainSpray = nil,
+	rainSound = nil,
+	thunderSound = nil,
+	cc = nil,
+	backup = nil
 }
 
 local function startRainMap()
 	if RainMap.active then return end
 	RainMap.active = true
 
+	RainMap.backup = {
+		Brightness = Lighting.Brightness,
+		Ambient = Lighting.Ambient,
+		OutdoorAmbient = Lighting.OutdoorAmbient,
+		FogEnd = Lighting.FogEnd,
+		FogStart = Lighting.FogStart,
+		FogColor = Lighting.FogColor
+	}
+
+	Lighting.Brightness = 1.2
+	Lighting.Ambient = Color3.fromRGB(70, 80, 95)
+	Lighting.OutdoorAmbient = Color3.fromRGB(80, 90, 105)
+	Lighting.FogEnd = 400
+	Lighting.FogStart = 50
+	Lighting.FogColor = Color3.fromRGB(120, 135, 155)
+
+	RainMap.cc = Instance.new("ColorCorrectionEffect")
+	RainMap.cc.Brightness = -0.05
+	RainMap.cc.Contrast = 0.08
+	RainMap.cc.Saturation = -0.2
+	RainMap.cc.TintColor = Color3.fromRGB(200, 220, 240)
+	RainMap.cc.Parent = Lighting
+
 	local cam = workspace.CurrentCamera
 	if not cam then return end
 
 	RainMap.rainTop = Instance.new("Attachment")
-	RainMap.rainTop.Position = Vector3.new(0, 40, 0)
+	RainMap.rainTop.Position = Vector3.new(0, 50, 0)
 	RainMap.rainTop.Parent = cam
 
 	RainMap.rainBottom = Instance.new("Attachment")
-	RainMap.rainBottom.Position = Vector3.new(0, -5, 0)
+	RainMap.rainBottom.Position = Vector3.new(0, -8, 0)
 	RainMap.rainBottom.Parent = cam
 
-	RainMap.rainDrop = Instance.new("ParticleEmitter")
-	RainMap.rainDrop.Texture = "rbxassetid://241876428"
-	RainMap.rainDrop.Rate = 600
-	RainMap.rainDrop.Lifetime = NumberRange.new(0.5, 0.9)
-	RainMap.rainDrop.Speed = NumberRange.new(60, 100)
-	RainMap.rainDrop.SpreadAngle = Vector2.new(3, 3)
-	RainMap.rainDrop.Acceleration = Vector3.new(0, -180, 0)
-	RainMap.rainDrop.Size = NumberSequence.new(0.4)
-	RainMap.rainDrop.Transparency = NumberSequence.new(0.4)
-	RainMap.rainDrop.Color = ColorSequence.new(Color3.fromRGB(200, 220, 255))
-	RainMap.rainDrop.LightInfluence = 0
-	RainMap.rainDrop.LightEmission = 0.1
-	RainMap.rainDrop.EmissionDirection = Enum.NormalId.Bottom
-	RainMap.rainDrop.Rotation = NumberRange.new(0, 0)
-	RainMap.rainDrop.RotSpeed = NumberRange.new(0, 0)
-	RainMap.rainDrop.Squash = NumberSequence.new(3)
-	RainMap.rainDrop.VelocityInheritance = 0
-	RainMap.rainDrop.Parent = RainMap.rainTop
+	RainMap.rainFar = Instance.new("ParticleEmitter")
+	RainMap.rainFar.Texture = "rbxassetid://241876428"
+	RainMap.rainFar.Rate = 1000
+	RainMap.rainFar.Lifetime = NumberRange.new(0.6, 1.2)
+	RainMap.rainFar.Speed = NumberRange.new(80, 120)
+	RainMap.rainFar.SpreadAngle = Vector2.new(2, 2)
+	RainMap.rainFar.Acceleration = Vector3.new(0, -250, 0)
+	RainMap.rainFar.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.15),
+		NumberSequenceKeypoint.new(1, 0.25)
+	})
+	RainMap.rainFar.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.5),
+		NumberSequenceKeypoint.new(1, 0.7)
+	})
+	RainMap.rainFar.Color = ColorSequence.new(Color3.fromRGB(180, 210, 240))
+	RainMap.rainFar.LightInfluence = 0
+	RainMap.rainFar.LightEmission = 0.2
+	RainMap.rainFar.EmissionDirection = Enum.NormalId.Bottom
+	RainMap.rainFar.Squash = NumberSequence.new(4)
+	RainMap.rainFar.VelocityInheritance = 0
+	RainMap.rainFar.Parent = RainMap.rainTop
+
+	RainMap.rainNear = Instance.new("ParticleEmitter")
+	RainMap.rainNear.Texture = "rbxassetid://241876428"
+	RainMap.rainNear.Rate = 300
+	RainMap.rainNear.Lifetime = NumberRange.new(0.4, 0.8)
+	RainMap.rainNear.Speed = NumberRange.new(100, 150)
+	RainMap.rainNear.SpreadAngle = Vector2.new(1, 1)
+	RainMap.rainNear.Acceleration = Vector3.new(0, -280, 0)
+	RainMap.rainNear.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.4),
+		NumberSequenceKeypoint.new(1, 0.5)
+	})
+	RainMap.rainNear.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.15),
+		NumberSequenceKeypoint.new(1, 0.4)
+	})
+	RainMap.rainNear.Color = ColorSequence.new(Color3.fromRGB(200, 225, 255))
+	RainMap.rainNear.LightInfluence = 0
+	RainMap.rainNear.LightEmission = 0.3
+	RainMap.rainNear.EmissionDirection = Enum.NormalId.Bottom
+	RainMap.rainNear.Squash = NumberSequence.new(5)
+	RainMap.rainNear.VelocityInheritance = 0
+	RainMap.rainNear.Parent = RainMap.rainTop
 
 	RainMap.rainSplash = Instance.new("ParticleEmitter")
 	RainMap.rainSplash.Texture = "rbxassetid://244221440"
-	RainMap.rainSplash.Rate = 150
-	RainMap.rainSplash.Lifetime = NumberRange.new(0.4, 0.7)
-	RainMap.rainSplash.Speed = NumberRange.new(0, 3)
+	RainMap.rainSplash.Rate = 400
+	RainMap.rainSplash.Lifetime = NumberRange.new(0.3, 0.6)
+	RainMap.rainSplash.Speed = NumberRange.new(2, 8)
 	RainMap.rainSplash.SpreadAngle = Vector2.new(180, 180)
 	RainMap.rainSplash.Size = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 0.8),
-		NumberSequenceKeypoint.new(1, 2.5)
+		NumberSequenceKeypoint.new(0, 0.3),
+		NumberSequenceKeypoint.new(0.3, 0.7),
+		NumberSequenceKeypoint.new(1, 1.2)
 	})
 	RainMap.rainSplash.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.4),
+		NumberSequenceKeypoint.new(1, 1)
+	})
+	RainMap.rainSplash.Color = ColorSequence.new(Color3.fromRGB(180, 215, 240))
+	RainMap.rainSplash.LightInfluence = 0
+	RainMap.rainSplash.Orientation = Enum.ParticleOrientation.FacingCameraWorldUp
+	RainMap.rainSplash.Parent = RainMap.rainBottom
+
+	RainMap.rainSpray = Instance.new("ParticleEmitter")
+	RainMap.rainSpray.Texture = "rbxassetid://244221440"
+	RainMap.rainSpray.Rate = 200
+	RainMap.rainSpray.Lifetime = NumberRange.new(0.2, 0.5)
+	RainMap.rainSpray.Speed = NumberRange.new(5, 12)
+	RainMap.rainSpray.SpreadAngle = Vector2.new(180, 180)
+	RainMap.rainSpray.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.15),
+		NumberSequenceKeypoint.new(1, 0.4)
+	})
+	RainMap.rainSpray.Transparency = NumberSequence.new({
 		NumberSequenceKeypoint.new(0, 0.3),
 		NumberSequenceKeypoint.new(1, 1)
 	})
-	RainMap.rainSplash.Color = ColorSequence.new(Color3.fromRGB(180, 220, 255))
-	RainMap.rainSplash.LightInfluence = 0
-	RainMap.rainSplash.Rotation = NumberRange.new(0, 0)
-	RainMap.rainSplash.RotSpeed = NumberRange.new(0, 0)
-	RainMap.rainSplash.Orientation = Enum.ParticleOrientation.FacingCameraWorldUp
-	RainMap.rainSplash.Parent = RainMap.rainBottom
+	RainMap.rainSpray.Color = ColorSequence.new(Color3.fromRGB(200, 225, 255))
+	RainMap.rainSpray.LightInfluence = 0
+	RainMap.rainSpray.Orientation = Enum.ParticleOrientation.FacingCameraWorldUp
+	RainMap.rainSpray.Parent = RainMap.rainBottom
 
 	RainMap.rainSound = Instance.new("Sound")
 	RainMap.rainSound.SoundId = "rbxassetid://9046062719"
 	RainMap.rainSound.Looped = true
-	RainMap.rainSound.Volume = 0.8
+	RainMap.rainSound.Volume = 1
 	RainMap.rainSound.Parent = SoundService
 	pcall(function() SoundService:PlayLocalSound(RainMap.rainSound) end)
+
+	RainMap.thunderSound = Instance.new("Sound")
+	RainMap.thunderSound.SoundId = "rbxassetid://131237241"
+	RainMap.thunderSound.Looped = true
+	RainMap.thunderSound.Volume = 0.4
+	RainMap.thunderSound.Parent = SoundService
+	pcall(function() SoundService:PlayLocalSound(RainMap.thunderSound) end)
 end
 
 local function stopRainMap()
 	if not RainMap.active then return end
 	RainMap.active = false
 
-	if RainMap.rainDrop then pcall(function() RainMap.rainDrop:Destroy() end) RainMap.rainDrop = nil end
+	if RainMap.rainFar then pcall(function() RainMap.rainFar:Destroy() end) RainMap.rainFar = nil end
+	if RainMap.rainNear then pcall(function() RainMap.rainNear:Destroy() end) RainMap.rainNear = nil end
 	if RainMap.rainSplash then pcall(function() RainMap.rainSplash:Destroy() end) RainMap.rainSplash = nil end
+	if RainMap.rainSpray then pcall(function() RainMap.rainSpray:Destroy() end) RainMap.rainSpray = nil end
 	if RainMap.rainTop then pcall(function() RainMap.rainTop:Destroy() end) RainMap.rainTop = nil end
 	if RainMap.rainBottom then pcall(function() RainMap.rainBottom:Destroy() end) RainMap.rainBottom = nil end
 	if RainMap.rainSound then
@@ -2805,16 +2856,28 @@ local function stopRainMap()
 		pcall(function() RainMap.rainSound:Destroy() end)
 		RainMap.rainSound = nil
 	end
+	if RainMap.thunderSound then
+		pcall(function() RainMap.thunderSound:Stop() end)
+		pcall(function() RainMap.thunderSound:Destroy() end)
+		RainMap.thunderSound = nil
+	end
+	if RainMap.cc then pcall(function() RainMap.cc:Destroy() end) RainMap.cc = nil end
+
+	if RainMap.backup then
+		for k, v in pairs(RainMap.backup) do
+			pcall(function() Lighting[k] = v end)
+		end
+		RainMap.backup = nil
+	end
 end
 
--- ============================================================
--- SHADER: BẢN ĐỒ THƯ GIÃN
--- ============================================================
 local ChillMap = {
 	active = false,
 	backup = nil,
 	effects = {},
-	atmosphereBackup = nil
+	atmosphereBackup = nil,
+	birdSound = nil,
+	windSound = nil
 }
 
 local function startChillMap()
@@ -2826,41 +2889,46 @@ local function startChillMap()
 		Ambient = Lighting.Ambient,
 		OutdoorAmbient = Lighting.OutdoorAmbient,
 		GlobalShadows = Lighting.GlobalShadows,
-		ExposureCompensation = Lighting.ExposureCompensation
+		ExposureCompensation = Lighting.ExposureCompensation,
+		ClockTime = Lighting.ClockTime
 	}
 
-	Lighting.Brightness = 2
-	Lighting.Ambient = Color3.fromRGB(150, 145, 140)
-	Lighting.OutdoorAmbient = Color3.fromRGB(160, 155, 150)
+	pcall(function()
+		Lighting.ClockTime = 17
+	end)
+
+	Lighting.Brightness = 2.5
+	Lighting.Ambient = Color3.fromRGB(180, 165, 145)
+	Lighting.OutdoorAmbient = Color3.fromRGB(200, 180, 155)
 	Lighting.GlobalShadows = true
-	Lighting.ExposureCompensation = 0.2
+	Lighting.ExposureCompensation = 0.3
 
 	local sunRays = Instance.new("SunRaysEffect")
-	sunRays.Intensity = 0.15
-	sunRays.Spread = 0.9
+	sunRays.Intensity = 0.25
+	sunRays.Spread = 1
 	sunRays.Parent = Lighting
 	table.insert(ChillMap.effects, sunRays)
 
 	local bloom = Instance.new("BloomEffect")
-	bloom.Intensity = 1.2
-	bloom.Size = 24
-	bloom.Threshold = 0.85
+	bloom.Intensity = 1.5
+	bloom.Size = 32
+	bloom.Threshold = 0.9
 	bloom.Parent = Lighting
 	table.insert(ChillMap.effects, bloom)
 
 	local cc = Instance.new("ColorCorrectionEffect")
-	cc.Brightness = 0.05
-	cc.Contrast = 0.18
-	cc.Saturation = 0.15
-	cc.TintColor = Color3.fromRGB(255, 245, 230)
+	cc.Brightness = 0.08
+	cc.Contrast = 0.15
+	cc.Saturation = 0.2
+	cc.TintColor = Color3.fromRGB(255, 240, 220)
 	cc.Parent = Lighting
 	table.insert(ChillMap.effects, cc)
 
 	local dof = Instance.new("DepthOfFieldEffect")
-	dof.FarIntensity = 0.15
-	dof.FocusDistance = 30
-	dof.InFocusRadius = 25
-	dof.NearIntensity = 0.4
+	dof.FarIntensity = 0.1
+	dof.FocusDistance = 40
+	dof.InFocusRadius = 30
+	dof.NearIntensity = 0.25
 	dof.Parent = Lighting
 	table.insert(ChillMap.effects, dof)
 
@@ -2879,13 +2947,27 @@ local function startChillMap()
 		Haze = atmo.Haze
 	}
 	pcall(function()
-		atmo.Density = 0.3
+		atmo.Density = 0.35
 		atmo.Offset = 0
-		atmo.Color = Color3.fromRGB(200, 210, 220)
-		atmo.Decay = Color3.fromRGB(106, 112, 125)
-		atmo.Glare = 0.1
-		atmo.Haze = 0.8
+		atmo.Color = Color3.fromRGB(220, 200, 180)
+		atmo.Decay = Color3.fromRGB(120, 100, 90)
+		atmo.Glare = 0.15
+		atmo.Haze = 1.2
 	end)
+
+	ChillMap.birdSound = Instance.new("Sound")
+	ChillMap.birdSound.SoundId = "rbxassetid://912038643"
+	ChillMap.birdSound.Looped = true
+	ChillMap.birdSound.Volume = 0.3
+	ChillMap.birdSound.Parent = SoundService
+	pcall(function() SoundService:PlayLocalSound(ChillMap.birdSound) end)
+
+	ChillMap.windSound = Instance.new("Sound")
+	ChillMap.windSound.SoundId = "rbxassetid://5153422566"
+	ChillMap.windSound.Looped = true
+	ChillMap.windSound.Volume = 0.15
+	ChillMap.windSound.Parent = SoundService
+	pcall(function() SoundService:PlayLocalSound(ChillMap.windSound) end)
 end
 
 local function stopChillMap()
@@ -2916,11 +2998,20 @@ local function stopChillMap()
 		end)
 		ChillMap.atmosphereBackup = nil
 	end
+
+	if ChillMap.birdSound then
+		pcall(function() ChillMap.birdSound:Stop() end)
+		pcall(function() ChillMap.birdSound:Destroy() end)
+		ChillMap.birdSound = nil
+	end
+
+	if ChillMap.windSound then
+		pcall(function() ChillMap.windSound:Stop() end)
+		pcall(function() ChillMap.windSound:Destroy() end)
+		ChillMap.windSound = nil
+	end
 end
 
--- ============================================================
--- SECTION SHADER
--- ============================================================
 createSection(VisualPage, "Shader", 6)
 
 createStateButton(VisualPage, "Bản đồ sáng", "Tăng độ sáng map, phù hợp game kinh dị tối. Bấm lần nữa để tắt.", function()
@@ -2931,7 +3022,7 @@ end, function()
 	showNotice("Đã tắt Bản đồ sáng.", true)
 end, 7)
 
-createStateButton(VisualPage, "Bản đồ mưa", "Hiệu ứng mưa rơi + splash dưới đất + âm thanh. Bấm lần nữa để tắt.", function()
+createStateButton(VisualPage, "Bản đồ mưa", "Mưa 2 lớp + nước bắn + sấm chớp + u ám. Bấm lần nữa để tắt.", function()
 	startRainMap()
 	showNotice("Đã bật Bản đồ mưa.", true)
 end, function()
@@ -2939,7 +3030,7 @@ end, function()
 	showNotice("Đã tắt Bản đồ mưa.", true)
 end, 8)
 
-createStateButton(VisualPage, "Bản đồ thư giãn", "Shader đẹp: tia nắng, bloom, color ấm. Khuyến khích máy mạnh.", function()
+createStateButton(VisualPage, "Bản đồ thư giãn", "Hoàng hôn + tia nắng + tiếng chim/gió. Khuyến khích máy mạnh.", function()
 	startChillMap()
 	showNotice("Đã bật Bản đồ thư giãn.", true)
 end, function()
@@ -2947,9 +3038,6 @@ end, function()
 	showNotice("Đã tắt Bản đồ thư giãn.", true)
 end, 9)
 
--- ============================================================
--- SECTION HIỆU ỨNG (pose)
--- ============================================================
 createSection(VisualPage, "Hiệu ứng", 20)
 
 local poseConnection = nil
@@ -3085,9 +3173,6 @@ createButton(VisualPage, "Tắt hiệu ứng", "Trở về tư thế bình thư�
 	showNotice("Đã tắt hiệu ứng.", true)
 end, 23)
 
--- ============================================================
--- SERVER TAB
--- ============================================================
 createSection(ServerPage, "Server", 1)
 
 local autoRun = false
@@ -3233,9 +3318,6 @@ createButton(ServerPage, "Lấy JobID + script vào map", "Hiện JobID và scri
 	showCopyPopup("JobID và Script", info)
 end, 6)
 
--- ============================================================
--- SETTINGS TAB
--- ============================================================
 createSection(SettingsPage, "Script", 1)
 
 createToggle(SettingsPage, "Tự động chạy lại script", "Tự chạy lại sau khi đổi server.", false, function(value)
@@ -3361,9 +3443,6 @@ createToggle(SettingsPage, "Lưu cài đặt chức năng", "Lưu trạng thái 
 	end
 end, 4)
 
--- ============================================================
--- FLOATING BUTTON
--- ============================================================
 local FloatingButton = Instance.new("TextButton")
 FloatingButton.AnchorPoint = Vector2.new(1, 0)
 FloatingButton.Position = UDim2.new(1, -20, 0, 100)
@@ -3511,9 +3590,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 end)
 
--- ============================================================
--- HOOK SAVE
--- ============================================================
 for title, t in pairs(TOGGLE_REGISTRY) do
 	local origSet = t.Set
 	t.Set = function(value)
@@ -3546,9 +3622,6 @@ task.spawn(function()
 	end
 end)
 
--- ============================================================
--- CHARACTER RESPAWN
--- ============================================================
 LocalPlayer.CharacterAdded:Connect(function(char)
 	task.wait(0.15)
 	character = char
