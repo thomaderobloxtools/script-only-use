@@ -1,9 +1,8 @@
--- [ThoScript] BUILD: 2026-09-15 #19
--- - Fix vùng an toàn: scan rộng 4 mức, bay 150 studs trên điểm cao nhất, loop qua loading screen
--- - Fix thông báo: hiển thị ngoài menu, góc phải màn hình, có icon ✓/✕
--- - Fix anti-lag: queue + batch, weak table, skip nhân vật/camera
--- - Sắp xếp lại: nút "Khác" trên, magic teleport dưới cùng tab Player
-local SCRIPT_BUILD = "2026-09-15-#19"
+-- [ThoScript] BUILD: 2026-09-15 #20
+-- - Fix vùng an toàn: giảm 150 -> 60 studs, không bay quá cao
+-- - Di chuyển magic teleport lên trên section "Khác"
+-- - Thêm 3 shader: Bản đồ sáng, Bản đồ mưa, Bản đồ thư giãn (click 2 lần để toggle)
+local SCRIPT_BUILD = "2026-09-15-#20"
 local AUTORUN_URL = "https://raw.githubusercontent.com/thomaderobloxtools/script-only-use/main/tho.lua"
 local SAVE_FILE = "tho_script_settings.json"
 
@@ -591,6 +590,81 @@ local function createButton(parent, title, description, callback, order)
 	return button
 end
 
+-- Button đổi màu khi active (dùng cho shader button)
+local function createStateButton(parent, title, description, onActivate, onDeactivate, order)
+	local row = Instance.new("Frame")
+	row.LayoutOrder = order
+	row.Size = UDim2.new(1, 0, 0, 56)
+	row.BackgroundColor3 = Color3.fromRGB(8, 29, 58)
+	row.BackgroundTransparency = 0.2
+	row.BorderSizePixel = 0
+	row.Parent = parent
+	addCorner(row, 8)
+	addStroke(row, Color3.fromRGB(31, 84, 140), 0.68, 1)
+
+	local titleLabel = addText(row, title, 12, Enum.Font.GothamSemibold, WHITE)
+	titleLabel.Position = UDim2.fromOffset(12, 6)
+	titleLabel.Size = UDim2.new(1, -110, 0, 18)
+
+	local descLabel = addText(row, description, 9, Enum.Font.Gotham, MUTED)
+	descLabel.Position = UDim2.fromOffset(12, 25)
+	descLabel.Size = UDim2.new(1, -110, 0, 22)
+	descLabel.TextWrapped = true
+	descLabel.TextYAlignment = Enum.TextYAlignment.Top
+
+	local button = Instance.new("TextButton")
+	button.AnchorPoint = Vector2.new(1, 0.5)
+	button.Position = UDim2.new(1, -12, 0.5, 0)
+	button.Size = UDim2.fromOffset(84, 28)
+	button.BackgroundColor3 = BLUE_3
+	button.BorderSizePixel = 0
+	button.Text = "BẬT"
+	button.TextSize = 9
+	button.Font = Enum.Font.GothamBold
+	button.TextColor3 = WHITE
+	button.AutoButtonColor = false
+	button.Parent = row
+	addCorner(button, 6)
+
+	local active = false
+
+	button.MouseEnter:Connect(function()
+		tween(button, 0.12, {BackgroundColor3 = active and Color3.fromRGB(200, 60, 60) or BLUE_4})
+	end)
+	button.MouseLeave:Connect(function()
+		tween(button, 0.12, {BackgroundColor3 = active and Color3.fromRGB(180, 50, 50) or BLUE_3})
+	end)
+
+	button.Activated:Connect(function()
+		active = not active
+
+		if active then
+			button.Text = "TẮT"
+			button.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+			if onActivate then
+				local ok, err = pcall(onActivate)
+				if not ok then warn("[ThoScript] StateButton activate error:", err) end
+			end
+		else
+			button.Text = "BẬT"
+			button.BackgroundColor3 = BLUE_3
+			if onDeactivate then
+				local ok, err = pcall(onDeactivate)
+				if not ok then warn("[ThoScript] StateButton deactivate error:", err) end
+			end
+		end
+
+		tween(button, 0.07, {Size = UDim2.fromOffset(80, 26)})
+		task.delay(0.07, function()
+			if button.Parent then
+				tween(button, 0.1, {Size = UDim2.fromOffset(84, 28)})
+			end
+		end)
+	end)
+
+	return button
+end
+
 local activeSlider = nil
 
 UserInputService.InputChanged:Connect(function(input)
@@ -1063,12 +1137,14 @@ createSlider(PlayerPage, "Tốc độ xoay", "Kéo để chỉnh tốc độ t�
 end, 13)
 
 -- ============================================================
--- SAFE ZONE (build #19 - scan rộng + loop qua loading screen)
+-- SAFE ZONE (build #20 - giảm 150 -> 60 studs)
 -- ============================================================
 local safeZoneActive = false
 local safeZoneSavedPos = nil
 local safeZoneBP = nil
 local safeZoneLoopThread = nil
+
+local SAFE_HEIGHT_OFFSET = 60
 
 local function getSafeHeight()
 	refreshCharacter()
@@ -1076,11 +1152,11 @@ local function getSafeHeight()
 	local pos = root.Position
 	local maxY = pos.Y
 
-	for _, radius in ipairs({100, 250, 500, 1000}) do
+	for _, radius in ipairs({80, 200, 400}) do
 		local ok, parts = pcall(function()
 			return workspace:GetPartBoundsInBox(
-				CFrame.new(pos.X, pos.Y + 200, pos.Z),
-				Vector3.new(radius * 2, 500, radius * 2)
+				CFrame.new(pos.X, pos.Y + 100, pos.Z),
+				Vector3.new(radius * 2, 300, radius * 2)
 			)
 		end)
 		if ok and parts then
@@ -1091,15 +1167,6 @@ local function getSafeHeight()
 				end
 			end
 		end
-	end
-
-	local ok, boxCF, boxSize = pcall(function()
-		local cf, sz = workspace:GetBoundingBox()
-		return cf, sz
-	end)
-	if ok and boxCF and boxSize then
-		local top = boxCF.Position.Y + boxSize.Y * 0.5
-		if top > maxY then maxY = top end
 	end
 
 	return maxY
@@ -1154,7 +1221,7 @@ local function startSafeZone()
 
 			if root and humanoid and humanoid.Health > 0 then
 				local highestY = getSafeHeight() or root.Position.Y
-				local targetY = highestY + 150
+				local targetY = highestY + SAFE_HEIGHT_OFFSET
 
 				if not safeZoneBP or not safeZoneBP.Parent then
 					safeZoneBP = Instance.new("BodyPosition")
@@ -1181,10 +1248,10 @@ local function startSafeZone()
 		end
 	end)
 
-	showNotice("Vùng an toàn đang hoạt động. Đợi map load rồi bay lên.", true)
+	showNotice("Vùng an toàn đang bật (cách mặt đất " .. SAFE_HEIGHT_OFFSET .. " studs).", true)
 end
 
-createToggle(PlayerPage, "Tự động di chuyển tới vùng an toàn", "Bay 150 studs trên map, tự theo dõi khi map đổi. Bật để treo AFK.", false, function(value)
+createToggle(PlayerPage, "Tự động di chuyển tới vùng an toàn", "Bay 60 studs trên map, tự theo dõi khi map đổi. Bật để treo AFK.", false, function(value)
 	State.safeZone = value
 	if value then
 		startSafeZone()
@@ -1205,6 +1272,242 @@ createButton(PlayerPage, "Di chuyển xuống lại mặt đất", "Quay về v�
 	end
 end, 15)
 
+-- ============================================================
+-- MAGIC TELEPORT (order 16 - ngay dưới safe zone, trên "Khác")
+-- ============================================================
+local magicActive = false
+local magicSplit = false
+local freeCamActive = false
+local magicButton = nil
+local magicSavedWalk, magicSavedJump
+local magicRenderName = "ThoMagicCam"
+local freeCamRenderName = "ThoFreeCam"
+local camYaw = 0
+local camPitch = 0
+local freeCamSavedWalk, freeCamSavedJump
+
+local function getCamRot()
+	return CFrame.fromEulerAnglesYXZ(math.rad(camPitch), math.rad(camYaw), 0)
+end
+
+local function getMoveInput()
+	local rot = getCamRot()
+	local look = rot.LookVector
+	local right = rot.RightVector
+	local move = Vector3.zero
+
+	if humanoid then
+		local md = humanoid.MoveDirection
+		if md.Magnitude > 0 then
+			local u = md.Unit
+			local f = u:Dot(look)
+			local r = u:Dot(right)
+			move += look * f + right * r
+		end
+	end
+
+	if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += look end
+	if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= look end
+	if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += right end
+	if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= right end
+	if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move += Vector3.yAxis end
+	if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move -= Vector3.yAxis end
+
+	if move.Magnitude > 1 then
+		move = move.Unit
+	end
+	return move
+end
+
+local function startMagicMode()
+	refreshCharacter()
+	if not root or not humanoid then
+		showNotice("Chưa có nhân vật.", false)
+		return false
+	end
+	magicSavedWalk = humanoid.WalkSpeed
+	magicSavedJump = humanoid.JumpPower
+	humanoid.WalkSpeed = 0
+	humanoid.JumpPower = 0
+	return true
+end
+
+local function endMagicMode()
+	refreshCharacter()
+	if humanoid then
+		humanoid.WalkSpeed = magicSavedWalk or 16
+		humanoid.JumpPower = magicSavedJump or 50
+	end
+end
+
+local function renderMagic(dt)
+	if not magicSplit then return end
+	local cam = workspace.CurrentCamera
+	if not cam then return end
+	cam.CameraType = Enum.CameraType.Scriptable
+
+	local rot = getCamRot()
+	local move = getMoveInput()
+	local speed = 80
+	local newPos = cam.CFrame.Position + move * speed * dt
+	cam.CFrame = CFrame.new(newPos) * rot
+end
+
+local function splitCamera()
+	local cam = workspace.CurrentCamera
+	if not cam then return end
+	magicSplit = true
+	cam.CameraType = Enum.CameraType.Scriptable
+
+	local look = cam.CFrame.LookVector
+	camYaw = math.deg(math.atan2(-look.X, -look.Z))
+	camPitch = math.deg(math.asin(math.clamp(look.Y, -1, 1)))
+
+	pcall(function()
+		RunService:UnbindFromRenderStep(magicRenderName)
+	end)
+	RunService:BindToRenderStep(magicRenderName, Enum.RenderPriority.Camera.Value + 10, renderMagic)
+
+	if magicButton then
+		magicButton.Text = "TP"
+		magicButton.BackgroundColor3 = Color3.fromRGB(255, 100, 30)
+	end
+end
+
+local function mergeCamera()
+	local cam = workspace.CurrentCamera
+	if not cam then return end
+	local camPos = cam.CFrame.Position
+
+	pcall(function()
+		RunService:UnbindFromRenderStep(magicRenderName)
+	end)
+
+	refreshCharacter()
+	if root then
+		root.CFrame = CFrame.new(camPos + Vector3.new(0, 3, 0))
+	end
+
+	cam.CameraType = Enum.CameraType.Custom
+	refreshCharacter()
+	if humanoid then
+		cam.CameraSubject = humanoid
+	end
+
+	magicSplit = false
+
+	if magicButton then
+		magicButton.Text = "CAM"
+		magicButton.BackgroundColor3 = Color3.fromRGB(150, 30, 200)
+	end
+end
+
+local function stopMagicTeleport()
+	magicActive = false
+	magicSplit = false
+
+	pcall(function()
+		RunService:UnbindFromRenderStep(magicRenderName)
+	end)
+
+	if magicButton then
+		magicButton:Destroy()
+		magicButton = nil
+	end
+	endMagicMode()
+
+	local cam = workspace.CurrentCamera
+	if cam then
+		cam.CameraType = Enum.CameraType.Custom
+		refreshCharacter()
+		if humanoid then
+			cam.CameraSubject = humanoid
+		end
+	end
+end
+
+local function startMagicTeleport()
+	if not startMagicMode() then return end
+	magicActive = true
+
+	magicButton = Instance.new("TextButton")
+	magicButton.Size = UDim2.fromOffset(64, 64)
+	magicButton.Position = UDim2.new(0, 30, 0.5, -32)
+	magicButton.BackgroundColor3 = Color3.fromRGB(150, 30, 200)
+	magicButton.BorderSizePixel = 0
+	magicButton.Text = "CAM"
+	magicButton.TextSize = 16
+	magicButton.TextColor3 = WHITE
+	magicButton.Font = Enum.Font.GothamBold
+	magicButton.AutoButtonColor = false
+	magicButton.ZIndex = 300
+	magicButton.Parent = ScreenGui
+	addCorner(magicButton, 100)
+
+	local stroke = addStroke(magicButton, Color3.fromRGB(0, 170, 255), 0, 6)
+	local strokeGrad = Instance.new("UIGradient")
+	strokeGrad.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 170, 255)),
+		ColorSequenceKeypoint.new(0.25, Color3.fromRGB(0, 255, 200)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(100, 150, 255)),
+		ColorSequenceKeypoint.new(0.75, Color3.fromRGB(0, 255, 255)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 170, 255))
+	})
+	strokeGrad.Parent = stroke
+
+	local dragging2 = false
+	local dragOffset
+	local moved = false
+	local pressTime = 0
+
+	magicButton.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+			dragging2 = true
+			moved = false
+			pressTime = tick()
+			dragOffset = Vector2.new(input.Position.X, input.Position.Y) - magicButton.AbsolutePosition
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging2 and (input.UserInputType == Enum.UserInputType.MouseMovement
+			or input.UserInputType == Enum.UserInputType.Touch) then
+			local newPos = Vector2.new(input.Position.X, input.Position.Y) - dragOffset
+			if (newPos - magicButton.AbsolutePosition).Magnitude > 8 then
+				moved = true
+			end
+			magicButton.Position = UDim2.fromOffset(newPos.X, newPos.Y)
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+			if dragging2 and not moved and (tick() - pressTime) < 0.5 then
+				if magicSplit then
+					mergeCamera()
+					showNotice("Đã dịch chuyển!", true)
+				else
+					splitCamera()
+					showNotice("Bấm lần nữa để teleport.", true)
+				end
+			end
+			dragging2 = false
+		end
+	end)
+end
+
+local magicToggle
+magicToggle = createToggle(PlayerPage, "Dịch chuyển ảo thuật", "Bấm CAM để tách camera, bấm TP để teleport. Chuột/ngón để xoay.", false, function(value)
+	if value then
+		startMagicTeleport()
+	else
+		stopMagicTeleport()
+	end
+end, 16)
+
+-- "Khác" section (order 26 - dưới magic)
 createSection(PlayerPage, "Khác", 26)
 
 createButton(PlayerPage, "Đặt lại nhân vật", "Reset nhân vật về trạng thái ban đầu.", function()
@@ -1370,7 +1673,6 @@ createToggle(ESPPage, "Định vị người chơi", "Hiển thị khung, tên, 
 	if value then startESP() else stopESP() end
 end, 2)
 
--- ESP Pro
 local ESPPro = {
 	active = false,
 	folder = nil,
@@ -1968,9 +2270,6 @@ end, 5)
 -- ============================================================
 createSection(VisualPage, "Visual", 1)
 
--- ============================================================
--- ANTILAG (build #19 - queue + batch, weak table, skip character)
--- ============================================================
 local AntiLag = {
 	active = false,
 	originals = setmetatable({}, {__mode = "k"}),
@@ -2393,7 +2692,300 @@ createToggle(VisualPage, "Xem từ xa", "Nhân vật đứng yên, camera bay t�
 	if value then startFreeCam() else stopFreeCam() end
 end, 5)
 
-createSection(VisualPage, "Hiệu ứng", 6)
+-- ============================================================
+-- SHADER: BẢN ĐỒ SÁNG
+-- ============================================================
+local BrightMap = {
+	active = false,
+	backup = nil,
+	colorCorrection = nil
+}
+
+local function startBrightMap()
+	if BrightMap.active then return end
+	BrightMap.active = true
+
+	BrightMap.backup = {
+		Brightness = Lighting.Brightness,
+		Ambient = Lighting.Ambient,
+		OutdoorAmbient = Lighting.OutdoorAmbient,
+		GlobalShadows = Lighting.GlobalShadows,
+		FogEnd = Lighting.FogEnd,
+		FogStart = Lighting.FogStart,
+		ExposureCompensation = Lighting.ExposureCompensation
+	}
+
+	Lighting.Brightness = 3
+	Lighting.Ambient = Color3.fromRGB(200, 200, 200)
+	Lighting.OutdoorAmbient = Color3.fromRGB(200, 200, 200)
+	Lighting.GlobalShadows = false
+	Lighting.FogEnd = 1e6
+	Lighting.FogStart = 1e6
+	Lighting.ExposureCompensation = 0.5
+
+	BrightMap.colorCorrection = Instance.new("ColorCorrectionEffect")
+	BrightMap.colorCorrection.Brightness = 0.15
+	BrightMap.colorCorrection.Contrast = -0.1
+	BrightMap.colorCorrection.Saturation = 0.05
+	BrightMap.colorCorrection.Parent = Lighting
+end
+
+local function stopBrightMap()
+	if not BrightMap.active then return end
+	BrightMap.active = false
+
+	if BrightMap.backup then
+		for k, v in pairs(BrightMap.backup) do
+			pcall(function() Lighting[k] = v end)
+		end
+		BrightMap.backup = nil
+	end
+
+	if BrightMap.colorCorrection then
+		pcall(function() BrightMap.colorCorrection:Destroy() end)
+		BrightMap.colorCorrection = nil
+	end
+end
+
+-- ============================================================
+-- SHADER: BẢN ĐỒ MƯA
+-- ============================================================
+local RainMap = {
+	active = false,
+	rainTop = nil,
+	rainBottom = nil,
+	rainDrop = nil,
+	rainSplash = nil,
+	rainSound = nil
+}
+
+local function startRainMap()
+	if RainMap.active then return end
+	RainMap.active = true
+
+	local cam = workspace.CurrentCamera
+	if not cam then return end
+
+	RainMap.rainTop = Instance.new("Attachment")
+	RainMap.rainTop.Position = Vector3.new(0, 40, 0)
+	RainMap.rainTop.Parent = cam
+
+	RainMap.rainBottom = Instance.new("Attachment")
+	RainMap.rainBottom.Position = Vector3.new(0, -5, 0)
+	RainMap.rainBottom.Parent = cam
+
+	RainMap.rainDrop = Instance.new("ParticleEmitter")
+	RainMap.rainDrop.Texture = "rbxassetid://241876428"
+	RainMap.rainDrop.Rate = 600
+	RainMap.rainDrop.Lifetime = NumberRange.new(0.5, 0.9)
+	RainMap.rainDrop.Speed = NumberRange.new(60, 100)
+	RainMap.rainDrop.SpreadAngle = Vector2.new(3, 3)
+	RainMap.rainDrop.Acceleration = Vector3.new(0, -180, 0)
+	RainMap.rainDrop.Size = NumberSequence.new(0.4)
+	RainMap.rainDrop.Transparency = NumberSequence.new(0.4)
+	RainMap.rainDrop.Color = ColorSequence.new(Color3.fromRGB(200, 220, 255))
+	RainMap.rainDrop.LightInfluence = 0
+	RainMap.rainDrop.LightEmission = 0.1
+	RainMap.rainDrop.EmissionDirection = Enum.NormalId.Bottom
+	RainMap.rainDrop.Rotation = NumberRange.new(0, 0)
+	RainMap.rainDrop.RotSpeed = NumberRange.new(0, 0)
+	RainMap.rainDrop.Squash = NumberSequence.new(3)
+	RainMap.rainDrop.VelocityInheritance = 0
+	RainMap.rainDrop.Parent = RainMap.rainTop
+
+	RainMap.rainSplash = Instance.new("ParticleEmitter")
+	RainMap.rainSplash.Texture = "rbxassetid://244221440"
+	RainMap.rainSplash.Rate = 150
+	RainMap.rainSplash.Lifetime = NumberRange.new(0.4, 0.7)
+	RainMap.rainSplash.Speed = NumberRange.new(0, 3)
+	RainMap.rainSplash.SpreadAngle = Vector2.new(180, 180)
+	RainMap.rainSplash.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.8),
+		NumberSequenceKeypoint.new(1, 2.5)
+	})
+	RainMap.rainSplash.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.3),
+		NumberSequenceKeypoint.new(1, 1)
+	})
+	RainMap.rainSplash.Color = ColorSequence.new(Color3.fromRGB(180, 220, 255))
+	RainMap.rainSplash.LightInfluence = 0
+	RainMap.rainSplash.Rotation = NumberRange.new(0, 0)
+	RainMap.rainSplash.RotSpeed = NumberRange.new(0, 0)
+	RainMap.rainSplash.Orientation = Enum.ParticleOrientation.FacingCameraWorldUp
+	RainMap.rainSplash.Parent = RainMap.rainBottom
+
+	RainMap.rainSound = Instance.new("Sound")
+	RainMap.rainSound.SoundId = "rbxassetid://9046062719"
+	RainMap.rainSound.Looped = true
+	RainMap.rainSound.Volume = 0.8
+	RainMap.rainSound.Parent = SoundService
+	pcall(function() SoundService:PlayLocalSound(RainMap.rainSound) end)
+end
+
+local function stopRainMap()
+	if not RainMap.active then return end
+	RainMap.active = false
+
+	if RainMap.rainDrop then pcall(function() RainMap.rainDrop:Destroy() end) RainMap.rainDrop = nil end
+	if RainMap.rainSplash then pcall(function() RainMap.rainSplash:Destroy() end) RainMap.rainSplash = nil end
+	if RainMap.rainTop then pcall(function() RainMap.rainTop:Destroy() end) RainMap.rainTop = nil end
+	if RainMap.rainBottom then pcall(function() RainMap.rainBottom:Destroy() end) RainMap.rainBottom = nil end
+	if RainMap.rainSound then
+		pcall(function() RainMap.rainSound:Stop() end)
+		pcall(function() RainMap.rainSound:Destroy() end)
+		RainMap.rainSound = nil
+	end
+end
+
+-- ============================================================
+-- SHADER: BẢN ĐỒ THƯ GIÃN
+-- ============================================================
+local ChillMap = {
+	active = false,
+	backup = nil,
+	effects = {},
+	atmosphereBackup = nil
+}
+
+local function startChillMap()
+	if ChillMap.active then return end
+	ChillMap.active = true
+
+	ChillMap.backup = {
+		Brightness = Lighting.Brightness,
+		Ambient = Lighting.Ambient,
+		OutdoorAmbient = Lighting.OutdoorAmbient,
+		GlobalShadows = Lighting.GlobalShadows,
+		ExposureCompensation = Lighting.ExposureCompensation
+	}
+
+	Lighting.Brightness = 2
+	Lighting.Ambient = Color3.fromRGB(150, 145, 140)
+	Lighting.OutdoorAmbient = Color3.fromRGB(160, 155, 150)
+	Lighting.GlobalShadows = true
+	Lighting.ExposureCompensation = 0.2
+
+	-- SunRays - tia nắng
+	local sunRays = Instance.new("SunRaysEffect")
+	sunRays.Intensity = 0.15
+	sunRays.Spread = 0.9
+	sunRays.Parent = Lighting
+	table.insert(ChillMap.effects, sunRays)
+
+	-- Bloom nhẹ
+	local bloom = Instance.new("BloomEffect")
+	bloom.Intensity = 1.2
+	bloom.Size = 24
+	bloom.Threshold = 0.85
+	bloom.Parent = Lighting
+	table.insert(ChillMap.effects, bloom)
+
+	-- ColorCorrection ấm
+	local cc = Instance.new("ColorCorrectionEffect")
+	cc.Brightness = 0.05
+	cc.Contrast = 0.18
+	cc.Saturation = 0.15
+	cc.TintColor = Color3.fromRGB(255, 245, 230)
+	cc.Parent = Lighting
+	table.insert(ChillMap.effects, cc)
+
+	-- DepthOfField nhẹ
+	local dof = Instance.new("DepthOfFieldEffect")
+	dof.FarIntensity = 0.15
+	dof.FocusDistance = 30
+	dof.InFocusRadius = 25
+	dof.NearIntensity = 0.4
+	dof.Parent = Lighting
+	table.insert(ChillMap.effects, dof)
+
+	-- Atmosphere mềm
+	local atmo = Lighting:FindFirstChildOfClass("Atmosphere")
+	if not atmo then
+		atmo = Instance.new("Atmosphere")
+		atmo.Parent = Lighting
+	end
+	ChillMap.atmosphereBackup = {
+		obj = atmo,
+		Density = atmo.Density,
+		Offset = atmo.Offset,
+		Color = atmo.Color,
+		Decay = atmo.Decay,
+		Glare = atmo.Glare,
+		Haze = atmo.Haze
+	}
+	pcall(function()
+		atmo.Density = 0.3
+		atmo.Offset = 0
+		atmo.Color = Color3.fromRGB(200, 210, 220)
+		atmo.Decay = Color3.fromRGB(106, 112, 125)
+		atmo.Glare = 0.1
+		atmo.Haze = 0.8
+	end)
+end
+
+local function stopChillMap()
+	if not ChillMap.active then return end
+	ChillMap.active = false
+
+	if ChillMap.backup then
+		for k, v in pairs(ChillMap.backup) do
+			pcall(function() Lighting[k] = v end)
+		end
+		ChillMap.backup = nil
+	end
+
+	for _, e in ipairs(ChillMap.effects) do
+		pcall(function() e:Destroy() end)
+	end
+	ChillMap.effects = {}
+
+	if ChillMap.atmosphereBackup then
+		local a = ChillMap.atmosphereBackup
+		pcall(function()
+			a.obj.Density = a.Density
+			a.obj.Offset = a.Offset
+			a.obj.Color = a.Color
+			a.obj.Decay = a.Decay
+			a.obj.Glare = a.Glare
+			a.obj.Haze = a.Haze
+		end)
+		ChillMap.atmosphereBackup = nil
+	end
+end
+
+-- ============================================================
+-- SECTION SHADER (trong tab Visual)
+-- ============================================================
+createSection(VisualPage, "Shader", 6)
+
+createStateButton(VisualPage, "Bản đồ sáng", "Tăng độ sáng map, phù hợp game kinh dị tối. Bấm lần nữa để tắt.", function()
+	startBrightMap()
+	showNotice("Đã bật Bản đồ sáng.", true)
+end, function()
+	stopBrightMap()
+	showNotice("Đã tắt Bản đồ sáng.", true)
+end, 7)
+
+createStateButton(VisualPage, "Bản đồ mưa", "Hiệu ứng mưa rơi + splash dưới đất + âm thanh. Bấm lần nữa để tắt.", function()
+	startRainMap()
+	showNotice("Đã bật Bản đồ mưa.", true)
+end, function()
+	stopRainMap()
+	showNotice("Đã tắt Bản đồ mưa.", true)
+end, 8)
+
+createStateButton(VisualPage, "Bản đồ thư giãn", "Shader đẹp: tia nắng, bloom, color ấm. Khuyến khích máy mạnh.", function()
+	startChillMap()
+	showNotice("Đã bật Bản đồ thư giãn.", true)
+end, function()
+	stopChillMap()
+	showNotice("Đã tắt Bản đồ thư giãn.", true)
+end, 9)
+
+-- ============================================================
+-- SECTION HIỆU ỨNG (pose)
+-- ============================================================
+createSection(VisualPage, "Hiệu ứng", 20)
 
 local poseConnection = nil
 local poseName = nil
@@ -2516,17 +3108,17 @@ end
 createButton(VisualPage, "Vô Lượng Không Xứ", "Tay phải giơ ra trước mặt (Gojo) + nhạc.", function()
 	applyPose("void")
 	showNotice("Đã kích hoạt Vô Lượng Không Xứ", true)
-end, 7)
+end, 21)
 
 createButton(VisualPage, "Phục Ma Ngự Trù Tử", "Hai tay chắp trước ngực (Sukuna) + nhạc.", function()
 	applyPose("shrine")
 	showNotice("Đã kích hoạt Phục Ma Ngự Trù Tử", true)
-end, 8)
+end, 22)
 
 createButton(VisualPage, "Tắt hiệu ứng", "Trở về tư thế bình thường.", function()
 	resetPose()
 	showNotice("Đã tắt hiệu ứng.", true)
-end, 9)
+end, 23)
 
 -- ============================================================
 -- SERVER TAB
@@ -2740,6 +3332,9 @@ createButton(SettingsPage, "Khởi động lại script", "Xóa GUI và chạy l
 		pcall(function() if freeCamActive then stopFreeCam() end end)
 		pcall(function() if poseName then resetPose() end end)
 		pcall(function() if safeZoneActive then stopSafeZone(false) end end)
+		pcall(function() if BrightMap.active then stopBrightMap() end end)
+		pcall(function() if RainMap.active then stopRainMap() end end)
+		pcall(function() if ChillMap.active then stopChillMap() end end)
 
 		task.wait(0.3)
 
@@ -2960,198 +3555,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 end)
 
 -- ============================================================
--- MAGIC TELEPORT (dưới cùng tab Player)
--- ============================================================
-local function startMagicMode()
-	refreshCharacter()
-	if not root or not humanoid then
-		showNotice("Chưa có nhân vật.", false)
-		return false
-	end
-	magicSavedWalk = humanoid.WalkSpeed
-	magicSavedJump = humanoid.JumpPower
-	humanoid.WalkSpeed = 0
-	humanoid.JumpPower = 0
-	return true
-end
-
-local function endMagicMode()
-	refreshCharacter()
-	if humanoid then
-		humanoid.WalkSpeed = magicSavedWalk or 16
-		humanoid.JumpPower = magicSavedJump or 50
-	end
-end
-
-local function renderMagic(dt)
-	if not magicSplit then return end
-	local cam = workspace.CurrentCamera
-	if not cam then return end
-	cam.CameraType = Enum.CameraType.Scriptable
-
-	local rot = getCamRot()
-	local move = getMoveInput()
-	local speed = 80
-	local newPos = cam.CFrame.Position + move * speed * dt
-	cam.CFrame = CFrame.new(newPos) * rot
-end
-
-local function splitCamera()
-	local cam = workspace.CurrentCamera
-	if not cam then return end
-	magicSplit = true
-	cam.CameraType = Enum.CameraType.Scriptable
-
-	local look = cam.CFrame.LookVector
-	camYaw = math.deg(math.atan2(-look.X, -look.Z))
-	camPitch = math.deg(math.asin(math.clamp(look.Y, -1, 1)))
-
-	pcall(function()
-		RunService:UnbindFromRenderStep(magicRenderName)
-	end)
-	RunService:BindToRenderStep(magicRenderName, Enum.RenderPriority.Camera.Value + 10, renderMagic)
-
-	if magicButton then
-		magicButton.Text = "TP"
-		magicButton.BackgroundColor3 = Color3.fromRGB(255, 100, 30)
-	end
-end
-
-local function mergeCamera()
-	local cam = workspace.CurrentCamera
-	if not cam then return end
-	local camPos = cam.CFrame.Position
-
-	pcall(function()
-		RunService:UnbindFromRenderStep(magicRenderName)
-	end)
-
-	refreshCharacter()
-	if root then
-		root.CFrame = CFrame.new(camPos + Vector3.new(0, 3, 0))
-	end
-
-	cam.CameraType = Enum.CameraType.Custom
-	refreshCharacter()
-	if humanoid then
-		cam.CameraSubject = humanoid
-	end
-
-	magicSplit = false
-
-	if magicButton then
-		magicButton.Text = "CAM"
-		magicButton.BackgroundColor3 = Color3.fromRGB(150, 30, 200)
-	end
-end
-
-local function stopMagicTeleport()
-	magicActive = false
-	magicSplit = false
-
-	pcall(function()
-		RunService:UnbindFromRenderStep(magicRenderName)
-	end)
-
-	if magicButton then
-		magicButton:Destroy()
-		magicButton = nil
-	end
-	endMagicMode()
-
-	local cam = workspace.CurrentCamera
-	if cam then
-		cam.CameraType = Enum.CameraType.Custom
-		refreshCharacter()
-		if humanoid then
-			cam.CameraSubject = humanoid
-		end
-	end
-end
-
-local function startMagicTeleport()
-	if not startMagicMode() then return end
-	magicActive = true
-
-	magicButton = Instance.new("TextButton")
-	magicButton.Size = UDim2.fromOffset(64, 64)
-	magicButton.Position = UDim2.new(0, 30, 0.5, -32)
-	magicButton.BackgroundColor3 = Color3.fromRGB(150, 30, 200)
-	magicButton.BorderSizePixel = 0
-	magicButton.Text = "CAM"
-	magicButton.TextSize = 16
-	magicButton.TextColor3 = WHITE
-	magicButton.Font = Enum.Font.GothamBold
-	magicButton.AutoButtonColor = false
-	magicButton.ZIndex = 300
-	magicButton.Parent = ScreenGui
-	addCorner(magicButton, 100)
-
-	local stroke = addStroke(magicButton, Color3.fromRGB(0, 170, 255), 0, 6)
-	local strokeGrad = Instance.new("UIGradient")
-	strokeGrad.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 170, 255)),
-		ColorSequenceKeypoint.new(0.25, Color3.fromRGB(0, 255, 200)),
-		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(100, 150, 255)),
-		ColorSequenceKeypoint.new(0.75, Color3.fromRGB(0, 255, 255)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 170, 255))
-	})
-	strokeGrad.Parent = stroke
-
-	local dragging2 = false
-	local dragOffset
-	local moved = false
-	local pressTime = 0
-
-	magicButton.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
-			dragging2 = true
-			moved = false
-			pressTime = tick()
-			dragOffset = Vector2.new(input.Position.X, input.Position.Y) - magicButton.AbsolutePosition
-		end
-	end)
-
-	UserInputService.InputChanged:Connect(function(input)
-		if dragging2 and (input.UserInputType == Enum.UserInputType.MouseMovement
-			or input.UserInputType == Enum.UserInputType.Touch) then
-			local newPos = Vector2.new(input.Position.X, input.Position.Y) - dragOffset
-			if (newPos - magicButton.AbsolutePosition).Magnitude > 8 then
-				moved = true
-			end
-			magicButton.Position = UDim2.fromOffset(newPos.X, newPos.Y)
-		end
-	end)
-
-	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
-			if dragging2 and not moved and (tick() - pressTime) < 0.5 then
-				if magicSplit then
-					mergeCamera()
-					showNotice("Đã dịch chuyển!", true)
-				else
-					splitCamera()
-					showNotice("Bấm lần nữa để teleport.", true)
-				end
-			end
-			dragging2 = false
-		end
-	end)
-end
-
-local magicToggle
-magicToggle = createToggle(PlayerPage, "Dịch chuyển ảo thuật", "Bấm CAM để tách camera, bấm TP để teleport. Chuột/ngón để xoay.", false, function(value)
-	if value then
-		startMagicTeleport()
-	else
-		stopMagicTeleport()
-	end
-end, 30)
-
--- ============================================================
--- HOOK SAVE INTO TOGGLE REGISTRY
+-- HOOK SAVE
 -- ============================================================
 for title, t in pairs(TOGGLE_REGISTRY) do
 	local origSet = t.Set
