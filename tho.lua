@@ -1,7 +1,8 @@
--- [ThoScript] BUILD: 2026-09-15 #24
--- - Xoá chức năng "Lưu cài đặt chức năng"
--- - Thêm chức năng "Xem FPS" ở góc trên bên trái
-local SCRIPT_BUILD = "2026-09-15-#24"
+-- [ThoScript] BUILD: 2026-09-15 #25
+-- - Fix "Xem FPS" không hiển thị (lỗi closure capture)
+-- - Cải thiện nhận diện NPC (thêm delay sau khi Humanoid được thêm)
+-- - Bỏ các dấu phân cách dạng ===== trong code
+local SCRIPT_BUILD = "2026-09-15-#25"
 local AUTORUN_URL = "https://raw.githubusercontent.com/thomaderobloxtools/script-only-use/main/tho.lua"
 
 repeat task.wait() until game:IsLoaded()
@@ -2121,8 +2122,12 @@ local function startNPCESP()
 		if not NPCESP.active then return end
 		if obj:IsA("Humanoid") then
 			local model = obj.Parent
-			if model and model:IsA("Model") and isNPCModel(model) then
-				ensureNPCESP(model)
+			if model and model:IsA("Model") then
+				task.delay(0.2, function()
+					if NPCESP.active and model.Parent and isNPCModel(model) then
+						ensureNPCESP(model)
+					end
+				end)
 			end
 		end
 	end)
@@ -3368,92 +3373,6 @@ end, 6)
 
 createSection(SettingsPage, "Script", 1)
 
-createToggle(SettingsPage, "Tự động chạy lại script", "Tự chạy lại sau khi đổi server.", false, function(value)
-	autoRun = value
-	if not value then
-		showNotice("Đã tắt tự động chạy lại.", true)
-		return
-	end
-
-	if AUTORUN_URL == "" then
-		showNotice("Cần điền AUTORUN_URL ở đầu script.", false)
-		return
-	end
-
-	local hasQueue = false
-	pcall(function()
-		if type(queue_on_teleport) == "function" then hasQueue = true end
-		if type(syn) == "table" and type(syn.queue_on_teleport) == "function" then hasQueue = true end
-	end)
-
-	if hasQueue then
-		showNotice("Đã bật. Script sẽ tự chạy lại sau khi đổi server.", true)
-	else
-		showNotice("Executor không hỗ trợ queue_on_teleport.", false)
-	end
-end, 2)
-
-createToggle(SettingsPage, "Xem FPS", "Hiển thị FPS thật ở góc trên bên trái màn hình.", false, function(value)
-	if FPSDisplay then
-		FPSDisplay.Set(value)
-	end
-end, 3)
-
-createButton(SettingsPage, "Khởi động lại script", "Xóa GUI và chạy lại script mới nhất.", function()
-	if getgenv()._ThoRestarting then
-		return
-	end
-	getgenv()._ThoRestarting = true
-
-	if AUTORUN_URL == "" then
-		showNotice("Cần điền AUTORUN_URL ở đầu script.", false)
-		getgenv()._ThoRestarting = false
-		return
-	end
-
-	local ok, src = pcall(game.HttpGet, game, AUTORUN_URL)
-	if not ok or not src then
-		showNotice("Không tải được source mới.", false)
-		getgenv()._ThoRestarting = false
-		return
-	end
-
-	showNotice("Đang khởi động lại...", true)
-
-	task.spawn(function()
-		task.wait(0.4)
-
-		pcall(function() if State.fly then stopFly() end end)
-		pcall(function() if State.esp then stopESP() end end)
-		pcall(function() if State.espPro then stopESPPro() end end)
-		pcall(function() if State.espNPC then stopNPCESP() end end)
-		pcall(function() if State.espTeam then stopTeamESP() end end)
-		pcall(function() if State.antiLag then stopAntiLag() end end)
-		pcall(function() if magicSplit then stopMagicTeleport() end end)
-		pcall(function() if freeCamActive then stopFreeCam() end end)
-		pcall(function() if poseName then resetPose() end end)
-		pcall(function() if safeZoneActive then stopSafeZone(false) end end)
-		pcall(function() if BrightMap.active then stopBrightMap() end end)
-		pcall(function() if RainMap.active then stopRainMap() end end)
-		pcall(function() if ChillMap.active then stopChillMap() end end)
-
-		task.wait(0.3)
-
-		pcall(function() ScreenGui:Destroy() end)
-		pcall(function() FloatGui:Destroy() end)
-
-		task.wait(0.5)
-
-		getgenv()._ThoRestarting = false
-
-		local fn = loadstring(src)
-		if fn then
-			task.spawn(fn)
-		end
-	end)
-end, 4)
-
--- ===== FPS Display =====
 local FPSDisplay = {}
 do
 	local fpsFrame = Instance.new("Frame")
@@ -3527,7 +3446,89 @@ do
 	end)
 end
 
--- ===== Floating Button =====
+createToggle(SettingsPage, "Tự động chạy lại script", "Tự chạy lại sau khi đổi server.", false, function(value)
+	autoRun = value
+	if not value then
+		showNotice("Đã tắt tự động chạy lại.", true)
+		return
+	end
+
+	if AUTORUN_URL == "" then
+		showNotice("Cần điền AUTORUN_URL ở đầu script.", false)
+		return
+	end
+
+	local hasQueue = false
+	pcall(function()
+		if type(queue_on_teleport) == "function" then hasQueue = true end
+		if type(syn) == "table" and type(syn.queue_on_teleport) == "function" then hasQueue = true end
+	end)
+
+	if hasQueue then
+		showNotice("Đã bật. Script sẽ tự chạy lại sau khi đổi server.", true)
+	else
+		showNotice("Executor không hỗ trợ queue_on_teleport.", false)
+	end
+end, 2)
+
+createToggle(SettingsPage, "Xem FPS", "Hiển thị FPS thật ở góc trên bên trái màn hình.", false, function(value)
+	FPSDisplay.Set(value)
+end, 3)
+
+createButton(SettingsPage, "Khởi động lại script", "Xóa GUI và chạy lại script mới nhất.", function()
+	if getgenv()._ThoRestarting then
+		return
+	end
+	getgenv()._ThoRestarting = true
+
+	if AUTORUN_URL == "" then
+		showNotice("Cần điền AUTORUN_URL ở đầu script.", false)
+		getgenv()._ThoRestarting = false
+		return
+	end
+
+	local ok, src = pcall(game.HttpGet, game, AUTORUN_URL)
+	if not ok or not src then
+		showNotice("Không tải được source mới.", false)
+		getgenv()._ThoRestarting = false
+		return
+	end
+
+	showNotice("Đang khởi động lại...", true)
+
+	task.spawn(function()
+		task.wait(0.4)
+
+		pcall(function() if State.fly then stopFly() end end)
+		pcall(function() if State.esp then stopESP() end end)
+		pcall(function() if State.espPro then stopESPPro() end end)
+		pcall(function() if State.espNPC then stopNPCESP() end end)
+		pcall(function() if State.espTeam then stopTeamESP() end end)
+		pcall(function() if State.antiLag then stopAntiLag() end end)
+		pcall(function() if magicSplit then stopMagicTeleport() end end)
+		pcall(function() if freeCamActive then stopFreeCam() end end)
+		pcall(function() if poseName then resetPose() end end)
+		pcall(function() if safeZoneActive then stopSafeZone(false) end end)
+		pcall(function() if BrightMap.active then stopBrightMap() end end)
+		pcall(function() if RainMap.active then stopRainMap() end end)
+		pcall(function() if ChillMap.active then stopChillMap() end end)
+
+		task.wait(0.3)
+
+		pcall(function() ScreenGui:Destroy() end)
+		pcall(function() FloatGui:Destroy() end)
+
+		task.wait(0.5)
+
+		getgenv()._ThoRestarting = false
+
+		local fn = loadstring(src)
+		if fn then
+			task.spawn(fn)
+		end
+	end)
+end, 4)
+
 local FloatingButton = Instance.new("TextButton")
 FloatingButton.AnchorPoint = Vector2.new(1, 0)
 FloatingButton.Position = UDim2.new(1, -20, 0, 100)
