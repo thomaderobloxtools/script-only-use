@@ -1,10 +1,11 @@
--- [ThoScript] BUILD: 2026-09-13 #17
--- - Fix magic/freecam di chuyển dọc (bỏ flatten MD)
--- - Fix freecam không xoay được (khai báo biến sớm)
--- - Fix tia ESP pro chỉ vẽ trong viewport
--- - Viền nút CAM xanh dương gradient nhiều màu
-local SCRIPT_BUILD = "2026-09-13-#17"
+-- [ThoScript] BUILD: 2026-09-15 #18
+-- - Thêm tab ESP: chứa định vị người chơi/nâng cao + Định vị NPC + Định vị đồng đội
+-- - Thêm tab Settings: tự động chạy lại + khởi động lại script + lưu cài đặt
+-- - Thêm "Tự động di chuyển tới vùng an toàn" (Player) + nút xuống đất
+-- - Slider có nút khóa để tránh lỡ tay khi scroll
+local SCRIPT_BUILD = "2026-09-15-#18"
 local AUTORUN_URL = "https://raw.githubusercontent.com/thomaderobloxtools/script-only-use/main/tho.lua"
+local SAVE_FILE = "tho_script_settings.json"
 
 repeat task.wait() until game:IsLoaded()
 
@@ -288,12 +289,16 @@ local function createPage(name)
 end
 
 createTab("Player", 2)
-createTab("Server", 3)
+createTab("ESP", 3)
 createTab("Visual", 4)
+createTab("Server", 5)
+createTab("Settings", 6)
 
 local PlayerPage = createPage("Player")
-local ServerPage = createPage("Server")
+local ESPPage = createPage("ESP")
 local VisualPage = createPage("Visual")
+local ServerPage = createPage("Server")
+local SettingsPage = createPage("Settings")
 
 local function showNotice(text, success)
 	local notice = Instance.new("Frame")
@@ -426,6 +431,9 @@ local function createSection(parent, title, order)
 	line.Parent = f
 end
 
+-- TOGGLE_REGISTRY dùng để lưu/khôi phục trạng thái
+local TOGGLE_REGISTRY = {}
+
 local function createToggle(parent, title, description, defaultValue, callback, order)
 	local row = Instance.new("Frame")
 	row.LayoutOrder = order
@@ -484,7 +492,10 @@ local function createToggle(parent, title, description, defaultValue, callback, 
 			tween(knob, 0.16, {Position = UDim2.new(0, 11, 0.5, 0), BackgroundColor3 = Color3.fromRGB(180, 200, 220)})
 		end
 
-		if callback and notify ~= false then callback(state) end
+		if callback and notify ~= false then
+			local ok, err = pcall(callback, state)
+			if not ok then warn("[ThoScript] Toggle error:", err) end
+		end
 
 		task.delay(0.05, function() busy = false end)
 	end
@@ -492,7 +503,7 @@ local function createToggle(parent, title, description, defaultValue, callback, 
 	track.Activated:Connect(function() setState(not state) end)
 	setState(state, false)
 
-	return {
+	local obj = {
 		Set = function(value) setState(value) end,
 		Get = function() return state end,
 		SetSilent = function(value)
@@ -506,8 +517,11 @@ local function createToggle(parent, title, description, defaultValue, callback, 
 				knob.Position = UDim2.new(0, 11, 0.5, 0)
 				knob.BackgroundColor3 = Color3.fromRGB(180, 200, 220)
 			end
-		end
+		end,
+		Title = title
 	}
+	TOGGLE_REGISTRY[title] = obj
+	return obj
 end
 
 local function createButton(parent, title, description, callback, order)
@@ -555,8 +569,13 @@ local function createButton(parent, title, description, callback, order)
 				tween(button, 0.1, {Size = UDim2.fromOffset(84, 28)})
 			end
 		end)
-		if callback then callback() end
+		if callback then
+			local ok, err = pcall(callback)
+			if not ok then warn("[ThoScript] Button error:", err) end
+		end
 	end)
+
+	return button
 end
 
 local activeSlider = nil
@@ -588,12 +607,41 @@ local function createSlider(parent, title, description, minValue, maxValue, defa
 
 	local titleLabel = addText(row, title, 12, Enum.Font.GothamSemibold, WHITE)
 	titleLabel.Position = UDim2.fromOffset(12, 6)
-	titleLabel.Size = UDim2.new(1, -90, 0, 18)
+	titleLabel.Size = UDim2.new(1, -120, 0, 18)
 
 	local valueLabel = addText(row, tostring(defaultValue), 11, Enum.Font.GothamBold, BLUE_5)
-	valueLabel.Position = UDim2.new(1, -60, 0, 6)
-	valueLabel.Size = UDim2.fromOffset(48, 18)
+	valueLabel.Position = UDim2.new(1, -90, 0, 6)
+	valueLabel.Size = UDim2.fromOffset(40, 18)
 	valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+
+	-- Nút khóa slider
+	local lockBtn = Instance.new("TextButton")
+	lockBtn.AnchorPoint = Vector2.new(1, 0)
+	lockBtn.Position = UDim2.new(1, -8, 0, 4)
+	lockBtn.Size = UDim2.fromOffset(24, 24)
+	lockBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+	lockBtn.BorderSizePixel = 0
+	lockBtn.Text = "🔓"
+	lockBtn.TextSize = 14
+	lockBtn.Font = Enum.Font.GothamBold
+	lockBtn.TextColor3 = WHITE
+	lockBtn.AutoButtonColor = false
+	lockBtn.ZIndex = 11
+	lockBtn.Parent = row
+	addCorner(lockBtn, 6)
+	addStroke(lockBtn, Color3.fromRGB(80, 80, 120), 0.5, 1)
+
+	local locked = false
+	lockBtn.Activated:Connect(function()
+		locked = not locked
+		if locked then
+			lockBtn.Text = "🔒"
+			lockBtn.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
+		else
+			lockBtn.Text = "🔓"
+			lockBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+		end
+	end)
 
 	local descLabel = addText(row, description, 9, Enum.Font.Gotham, MUTED)
 	descLabel.Position = UDim2.fromOffset(12, 24)
@@ -641,6 +689,7 @@ local function createSlider(parent, title, description, minValue, maxValue, defa
 	local currentValue = defaultValue
 
 	local function applyFromHitbox(x)
+		if locked then return end
 		local startX = hitbox.AbsolutePosition.X
 		local width = hitbox.AbsoluteSize.X
 		if width <= 0 then return end
@@ -660,6 +709,7 @@ local function createSlider(parent, title, description, minValue, maxValue, defa
 
 	hitbox.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			if locked then return end
 			activeSlider = applyFromHitbox
 			applyFromHitbox(input.Position.X)
 		end
@@ -679,8 +729,9 @@ local function createSlider(parent, title, description, minValue, maxValue, defa
 	}
 end
 
-createSection(PlayerPage, "Player", 1)
-
+-- ============================================================
+-- PLAYER STATE
+-- ============================================================
 local State = {
 	fly = false,
 	airWalk = false,
@@ -692,7 +743,10 @@ local State = {
 	spin = false,
 	esp = false,
 	espPro = false,
+	espNPC = false,
+	espTeam = false,
 	antiLag = false,
+	safeZone = false,
 	flySpeed = 100,
 	walkSpeed = 40,
 	jumpPower = 80,
@@ -819,6 +873,8 @@ local function startFly()
 		root.CFrame = CFrame.new(newPos, newPos + cam.CFrame.LookVector)
 	end)
 end
+
+createSection(PlayerPage, "Player", 1)
 
 createToggle(PlayerPage, "Bay", "Dùng joystick/WASD, Space/Ctrl để lên xuống.", false, function(value)
 	State.fly = value
@@ -994,6 +1050,132 @@ createSlider(PlayerPage, "Tốc độ xoay", "Kéo để chỉnh tốc độ t�
 	State.spinSpeed = value
 end, 13)
 
+-- ============================================================
+-- SAFE ZONE
+-- ============================================================
+local safeZoneBP = nil
+local safeZoneSavedPos = nil
+
+local function getSafeHeight()
+	refreshCharacter()
+	if not root then return nil end
+	local pos = root.Position
+	local maxY = pos.Y
+	local ok, parts = pcall(function()
+		return workspace:GetPartBoundsInBox(CFrame.new(pos.X, pos.Y + 150, pos.Z), Vector3.new(200, 600, 200))
+	end)
+	if ok and parts then
+		for _, p in ipairs(parts) do
+			if p.Anchored and p.CanCollide and p.Name ~= "_ThoAirWalk" then
+				local top = p.Position.Y + p.Size.Y * 0.5
+				if top > maxY then maxY = top end
+			end
+		end
+	end
+	return maxY + 35
+end
+
+local function stopSafeZone(teleportBack)
+	if safeZoneBP then
+		safeZoneBP:Destroy()
+		safeZoneBP = nil
+	end
+	if teleportBack and safeZoneSavedPos then
+		refreshCharacter()
+		if root then
+			root.CFrame = CFrame.new(safeZoneSavedPos + Vector3.new(0, 2, 0))
+		end
+	end
+	safeZoneSavedPos = nil
+end
+
+local function startSafeZone()
+	refreshCharacter()
+	if not root then
+		showNotice("Chưa có nhân vật.", false)
+		return
+	end
+
+	safeZoneSavedPos = root.Position
+	local targetY = getSafeHeight()
+	if not targetY then targetY = root.Position.Y + 35 end
+
+	safeZoneBP = Instance.new("BodyPosition")
+	safeZoneBP.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+	safeZoneBP.P = 15000
+	safeZoneBP.D = 800
+	safeZoneBP.Position = Vector3.new(root.Position.X, targetY, root.Position.Z)
+	safeZoneBP.Parent = root
+
+	showNotice("Đã lên vùng an toàn ở độ cao " .. math.floor(targetY - root.Position.Y) .. " studs.", true)
+end
+
+createToggle(PlayerPage, "Tự động di chuyển tới vùng an toàn", "Bay lên độ cao an toàn, tránh quái tấn công. Tắt để trở lại.", false, function(value)
+	State.safeZone = value
+	if value then
+		startSafeZone()
+	else
+		stopSafeZone(true)
+	end
+end, 14)
+
+createButton(PlayerPage, "Di chuyển xuống lại mặt đất", "Quay về vị trí ban đầu trước khi bật vùng an toàn.", function()
+	if safeZoneSavedPos then
+		refreshCharacter()
+		if root then
+			root.CFrame = CFrame.new(safeZoneSavedPos + Vector3.new(0, 2, 0))
+		end
+		if safeZoneBP then
+			safeZoneBP:Destroy()
+			safeZoneBP = nil
+		end
+		safeZoneSavedPos = nil
+		local t = TOGGLE_REGISTRY["Tự động di chuyển tới vùng an toàn"]
+		if t then t.SetSilent(false) end
+		State.safeZone = false
+		showNotice("Đã trở về mặt đất.", true)
+	else
+		showNotice("Không có vị trí nào đã lưu.", false)
+	end
+end, 15)
+
+createSection(PlayerPage, "Khác", 20)
+
+createButton(PlayerPage, "Đặt lại nhân vật", "Reset nhân vật về trạng thái ban đầu.", function()
+	local char = LocalPlayer.Character
+	if not char then return end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if hum then hum.Health = 0 end
+end, 21)
+
+createButton(PlayerPage, "Dịch chuyển về điểm hồi sinh", "Teleport nhân vật về SpawnLocation của game.", function()
+	local spawn
+	for _, obj in ipairs(workspace:GetDescendants()) do
+		if obj:IsA("SpawnLocation") then
+			spawn = obj
+			break
+		end
+	end
+
+	refreshCharacter()
+	if not root then
+		showNotice("Chưa có nhân vật.", false)
+		return
+	end
+
+	if spawn then
+		root.CFrame = spawn.CFrame + Vector3.new(0, 4, 0)
+	else
+		root.CFrame = CFrame.new(0, 50, 0)
+		showNotice("Không tìm thấy spawn, dùng mặc định.", true)
+	end
+end, 22)
+
+-- ============================================================
+-- ESP TAB
+-- ============================================================
+createSection(ESPPage, "Người chơi", 1)
+
 local ESPFolder = Instance.new("Folder")
 ESPFolder.Name = "_ThoESP"
 ESPFolder.Parent = ScreenGui
@@ -1117,11 +1299,12 @@ Players.PlayerRemoving:Connect(function(player)
 	destroyESP(player)
 end)
 
-createToggle(PlayerPage, "Định vị người chơi", "Hiển thị khung, tên, máu và khoảng cách.", false, function(value)
+createToggle(ESPPage, "Định vị người chơi", "Hiển thị khung, tên, máu và khoảng cách.", false, function(value)
 	State.esp = value
 	if value then startESP() else stopESP() end
-end, 14)
+end, 2)
 
+-- ESP Pro
 local ESPPro = {
 	active = false,
 	folder = nil,
@@ -1377,290 +1560,349 @@ local function stopESPPro()
 	end
 end
 
-createToggle(PlayerPage, "Định vị nâng cao", "Skeleton ESP + tia chỉ hướng + bảng đếm người chơi.", false, function(value)
+createToggle(ESPPage, "Định vị nâng cao", "Skeleton ESP + tia chỉ hướng + bảng đếm người chơi.", false, function(value)
 	if value then startESPPro() else stopESPPro() end
-end, 15)
+end, 3)
 
-createButton(PlayerPage, "Đặt lại nhân vật", "Reset nhân vật về trạng thái ban đầu.", function()
-	local char = LocalPlayer.Character
-	if not char then return end
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	if hum then hum.Health = 0 end
-end, 16)
+-- NPC ESP
+local NPCESP = {
+	active = false,
+	folder = nil,
+	data = {},  -- [model] = {highlight, billboard, nameLabel, infoLabel, box}
+	connection = nil,
+	descConn = nil,
+	bindName = "ThoNPCESPUpdate"
+}
 
-createButton(PlayerPage, "Dịch chuyển về điểm hồi sinh", "Teleport nhân vật về SpawnLocation của game.", function()
-	local spawn
-	for _, obj in ipairs(workspace:GetDescendants()) do
-		if obj:IsA("SpawnLocation") then
-			spawn = obj
-			break
-		end
-	end
-
-	refreshCharacter()
-	if not root then
-		showNotice("Chưa có nhân vật.", false)
-		return
-	end
-
-	if spawn then
-		root.CFrame = spawn.CFrame + Vector3.new(0, 4, 0)
-	else
-		root.CFrame = CFrame.new(0, 50, 0)
-		showNotice("Không tìm thấy spawn, dùng mặc định.", true)
-	end
-end, 17)
-
-UserInputService.InputBegan:Connect(function(input, processed)
-	if processed then return end
-	if input.KeyCode == Enum.KeyCode.Space and State.lying and lyingToggle then
-		lyingToggle.Set(false)
-	end
-end)
-
--- Camera helpers (khai báo sớm để dùng chung cho magic + free cam)
-local magicActive = false
-local magicSplit = false
-local freeCamActive = false
-local magicButton = nil
-local magicSavedWalk, magicSavedJump
-local magicRenderName = "ThoMagicCam"
-local freeCamRenderName = "ThoFreeCam"
-local camYaw = 0
-local camPitch = 0
-
-local function getCamRot()
-	return CFrame.fromEulerAnglesYXZ(math.rad(camPitch), math.rad(camYaw), 0)
+local function destroyNPCESP(model)
+	local d = NPCESP.data[model]
+	if not d then return end
+	if d.highlight then d.highlight:Destroy() end
+	if d.billboard then d.billboard:Destroy() end
+	if d.box then d.box:Destroy() end
+	NPCESP.data[model] = nil
 end
 
-local function getMoveInput()
-	local rot = getCamRot()
-	local look = rot.LookVector
-	local right = rot.RightVector
-	local move = Vector3.zero
+local function ensureNPCESP(model)
+	if NPCESP.data[model] then return end
 
-	if humanoid then
-		local md = humanoid.MoveDirection
-		if md.Magnitude > 0 then
-			local u = md.Unit
-			local f = u:Dot(look)
-			local r = u:Dot(right)
-			move += look * f + right * r
-		end
-	end
+	local highlight = Instance.new("Highlight")
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.FillColor = Color3.fromRGB(0, 150, 255)
+	highlight.FillTransparency = 0.5
+	highlight.OutlineColor = Color3.fromRGB(0, 200, 255)
+	highlight.OutlineTransparency = 0.1
+	highlight.Enabled = false
+	highlight.Parent = NPCESP.folder
 
-	if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += look end
-	if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= look end
-	if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += right end
-	if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= right end
-	if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move += Vector3.yAxis end
-	if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move -= Vector3.yAxis end
+	local box = Instance.new("SelectionBox")
+	box.LineThickness = 0.12
+	box.Color3 = Color3.fromRGB(0, 200, 255)
+	box.Transparency = 0
+	box.Visible = false
+	box.Parent = NPCESP.folder
 
-	if move.Magnitude > 1 then
-		move = move.Unit
-	end
-	return move
+	local billboard = Instance.new("BillboardGui")
+	billboard.Size = UDim2.fromOffset(180, 50)
+	billboard.StudsOffset = Vector3.new(0, 3.5, 0)
+	billboard.AlwaysOnTop = true
+	billboard.Enabled = false
+	billboard.LightInfluence = 0
+	billboard.Parent = NPCESP.folder
+
+	local nameLabel = addText(billboard, "NPC", 13, Enum.Font.GothamBold, Color3.fromRGB(0, 200, 255))
+	nameLabel.Size = UDim2.new(1, 0, 0, 20)
+	nameLabel.TextXAlignment = Enum.TextXAlignment.Center
+	nameLabel.TextStrokeTransparency = 0
+	nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+
+	local infoLabel = addText(billboard, "HP: -- | -- studs", 11, Enum.Font.GothamBold, WHITE)
+	infoLabel.Position = UDim2.fromOffset(0, 20)
+	infoLabel.Size = UDim2.new(1, 0, 0, 18)
+	infoLabel.TextXAlignment = Enum.TextXAlignment.Center
+	infoLabel.TextStrokeTransparency = 0
+	infoLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+
+	NPCESP.data[model] = {
+		highlight = highlight,
+		billboard = billboard,
+		nameLabel = nameLabel,
+		infoLabel = infoLabel,
+		box = box
+	}
 end
 
-UserInputService.InputChanged:Connect(function(input)
-	if not (magicSplit or freeCamActive) then return end
-	if input.UserInputType == Enum.UserInputType.MouseMovement then
-		camYaw -= input.Delta.X * 0.4
-		camPitch = math.clamp(camPitch - input.Delta.Y * 0.4, -89, 89)
-	elseif input.UserInputType == Enum.UserInputType.Touch then
-		camYaw -= input.Delta.X * 0.4
-		camPitch = math.clamp(camPitch - input.Delta.Y * 0.4, -89, 89)
-	end
-end)
-
-local function startMagicMode()
-	refreshCharacter()
-	if not root or not humanoid then
-		showNotice("Chưa có nhân vật.", false)
-		return false
-	end
-	magicSavedWalk = humanoid.WalkSpeed
-	magicSavedJump = humanoid.JumpPower
-	humanoid.WalkSpeed = 0
-	humanoid.JumpPower = 0
+local function isNPCModel(model)
+	if not model:IsA("Model") then return false end
+	if not model:FindFirstChildOfClass("Humanoid") then return false end
+	if not model:FindFirstChild("HumanoidRootPart") then return false end
+	if Players:GetPlayerFromCharacter(model) then return false end
 	return true
 end
 
-local function endMagicMode()
-	refreshCharacter()
-	if humanoid then
-		humanoid.WalkSpeed = magicSavedWalk or 16
-		humanoid.JumpPower = magicSavedJump or 50
-	end
-end
-
-local function renderMagic(dt)
-	if not magicSplit then return end
-	local cam = workspace.CurrentCamera
-	if not cam then return end
-	cam.CameraType = Enum.CameraType.Scriptable
-
-	local rot = getCamRot()
-	local move = getMoveInput()
-	local speed = 80
-	local newPos = cam.CFrame.Position + move * speed * dt
-	cam.CFrame = CFrame.new(newPos) * rot
-end
-
-local function splitCamera()
-	local cam = workspace.CurrentCamera
-	if not cam then return end
-	magicSplit = true
-	cam.CameraType = Enum.CameraType.Scriptable
-
-	local look = cam.CFrame.LookVector
-	camYaw = math.deg(math.atan2(-look.X, -look.Z))
-	camPitch = math.deg(math.asin(math.clamp(look.Y, -1, 1)))
-
-	pcall(function()
-		RunService:UnbindFromRenderStep(magicRenderName)
-	end)
-	RunService:BindToRenderStep(magicRenderName, Enum.RenderPriority.Camera.Value + 10, renderMagic)
-
-	if magicButton then
-		magicButton.Text = "TP"
-		magicButton.BackgroundColor3 = Color3.fromRGB(255, 100, 30)
-	end
-end
-
-local function mergeCamera()
-	local cam = workspace.CurrentCamera
-	if not cam then return end
-	local camPos = cam.CFrame.Position
-
-	pcall(function()
-		RunService:UnbindFromRenderStep(magicRenderName)
-	end)
-
-	refreshCharacter()
-	if root then
-		root.CFrame = CFrame.new(camPos + Vector3.new(0, 3, 0))
-	end
-
-	cam.CameraType = Enum.CameraType.Custom
-	refreshCharacter()
-	if humanoid then
-		cam.CameraSubject = humanoid
-	end
-
-	magicSplit = false
-
-	if magicButton then
-		magicButton.Text = "CAM"
-		magicButton.BackgroundColor3 = Color3.fromRGB(150, 30, 200)
-	end
-end
-
-local function stopMagicTeleport()
-	magicActive = false
-	magicSplit = false
-
-	pcall(function()
-		RunService:UnbindFromRenderStep(magicRenderName)
-	end)
-
-	if magicButton then
-		magicButton:Destroy()
-		magicButton = nil
-	end
-	endMagicMode()
-
-	local cam = workspace.CurrentCamera
-	if cam then
-		cam.CameraType = Enum.CameraType.Custom
-		refreshCharacter()
-		if humanoid then
-			cam.CameraSubject = humanoid
+local function scanNPCs()
+	for _, obj in ipairs(workspace:GetDescendants()) do
+		if obj:IsA("Model") and isNPCModel(obj) then
+			ensureNPCESP(obj)
 		end
 	end
 end
 
-local function startMagicTeleport()
-	if not startMagicMode() then return end
-	magicActive = true
+local function renderNPCESP()
+	if not NPCESP.active then return end
+	local localCharacter = LocalPlayer.Character
+	local localRoot = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
 
-	magicButton = Instance.new("TextButton")
-	magicButton.Size = UDim2.fromOffset(64, 64)
-	magicButton.Position = UDim2.new(0, 30, 0.5, -32)
-	magicButton.BackgroundColor3 = Color3.fromRGB(150, 30, 200)
-	magicButton.BorderSizePixel = 0
-	magicButton.Text = "CAM"
-	magicButton.TextSize = 16
-	magicButton.TextColor3 = WHITE
-	magicButton.Font = Enum.Font.GothamBold
-	magicButton.AutoButtonColor = false
-	magicButton.ZIndex = 300
-	magicButton.Parent = ScreenGui
-	addCorner(magicButton, 100)
+	for model, data in pairs(NPCESP.data) do
+		local targetRoot = model:FindFirstChild("HumanoidRootPart")
+		local targetHumanoid = model:FindFirstChildOfClass("Humanoid")
 
-	local stroke = addStroke(magicButton, Color3.fromRGB(0, 170, 255), 0, 6)
-	local strokeGrad = Instance.new("UIGradient")
-	strokeGrad.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 170, 255)),
-		ColorSequenceKeypoint.new(0.25, Color3.fromRGB(0, 255, 200)),
-		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(100, 150, 255)),
-		ColorSequenceKeypoint.new(0.75, Color3.fromRGB(0, 255, 255)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 170, 255))
-	})
-	strokeGrad.Parent = stroke
+		if model.Parent and targetRoot and targetHumanoid then
+			data.highlight.Adornee = model
+			data.highlight.Enabled = true
+			data.billboard.Adornee = targetRoot
+			data.billboard.Enabled = true
+			data.box.Adornee = model
+			data.box.Visible = true
 
-	local dragging = false
-	local dragOffset
-	local moved = false
-	local pressTime = 0
-
-	magicButton.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = true
-			moved = false
-			pressTime = tick()
-			dragOffset = Vector2.new(input.Position.X, input.Position.Y) - magicButton.AbsolutePosition
-		end
-	end)
-
-	UserInputService.InputChanged:Connect(function(input)
-		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
-			or input.UserInputType == Enum.UserInputType.Touch) then
-			local newPos = Vector2.new(input.Position.X, input.Position.Y) - dragOffset
-			if (newPos - magicButton.AbsolutePosition).Magnitude > 8 then
-				moved = true
+			local distance = 0
+			if localRoot then
+				distance = math.floor((localRoot.Position - targetRoot.Position).Magnitude)
 			end
-			magicButton.Position = UDim2.fromOffset(newPos.X, newPos.Y)
-		end
-	end)
 
-	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
-			if dragging and not moved and (tick() - pressTime) < 0.5 then
-				if magicSplit then
-					mergeCamera()
-					showNotice("Đã dịch chuyển!", true)
-				else
-					splitCamera()
-					showNotice("Bấm lần nữa để teleport.", true)
-				end
+			local name = model.Name
+			if name == "" or name == "Model" or name:match("^Model$") then
+				name = "N/A"
 			end
-			dragging = false
+
+			data.nameLabel.Text = name
+			data.infoLabel.Text =
+				"HP: " .. math.floor(targetHumanoid.Health)
+				.. "/" .. math.floor(targetHumanoid.MaxHealth)
+				.. " | " .. distance .. " studs"
+		else
+			destroyNPCESP(model)
 		end
-	end)
+	end
 end
 
-local magicToggle
-magicToggle = createToggle(PlayerPage, "Dịch chuyển ảo thuật", "Bấm CAM để tách camera, bấm TP để teleport về camera. Chuột/ngón để xoay.", false, function(value)
-	if value then
-		startMagicTeleport()
-	else
-		stopMagicTeleport()
-	end
-end, 18)
+local function startNPCESP()
+	if NPCESP.active then return end
+	NPCESP.active = true
+	State.espNPC = true
 
+	NPCESP.folder = Instance.new("Folder")
+	NPCESP.folder.Name = "_ThoNPCESP"
+	NPCESP.folder.Parent = ScreenGui
+
+	scanNPCs()
+
+	NPCESP.descConn = workspace.DescendantAdded:Connect(function(obj)
+		if not NPCESP.active then return end
+		if obj:IsA("Humanoid") then
+			local model = obj.Parent
+			if model and model:IsA("Model") and isNPCModel(model) then
+				ensureNPCESP(model)
+			end
+		end
+	end)
+
+	pcall(function()
+		RunService:UnbindFromRenderStep(NPCESP.bindName)
+	end)
+	RunService:BindToRenderStep(NPCESP.bindName, Enum.RenderPriority.Camera.Value + 1, renderNPCESP)
+end
+
+local function stopNPCESP()
+	NPCESP.active = false
+	State.espNPC = false
+
+	pcall(function()
+		RunService:UnbindFromRenderStep(NPCESP.bindName)
+	end)
+
+	if NPCESP.descConn then
+		NPCESP.descConn:Disconnect()
+		NPCESP.descConn = nil
+	end
+
+	for model, _ in pairs(NPCESP.data) do
+		destroyNPCESP(model)
+	end
+	NPCESP.data = {}
+
+	if NPCESP.folder then
+		NPCESP.folder:Destroy()
+		NPCESP.folder = nil
+	end
+end
+
+createToggle(ESPPage, "Định vị NPC", "Hiển thị tên, máu, khoảng cách của NPC (Model có Humanoid không thuộc player).", false, function(value)
+	if value then startNPCESP() else stopNPCESP() end
+end, 4)
+
+-- Team ESP
+local TeamESP = {
+	active = false,
+	folder = nil,
+	data = {},
+	connection = nil,
+	bindName = "ThoTeamESPUpdate"
+}
+
+local function destroyTeamESP(player)
+	local d = TeamESP.data[player]
+	if not d then return end
+	if d.highlight then d.highlight:Destroy() end
+	if d.billboard then d.billboard:Destroy() end
+	if d.box then d.box:Destroy() end
+	TeamESP.data[player] = nil
+end
+
+local function ensureTeamESP(player)
+	if TeamESP.data[player] then return end
+
+	local highlight = Instance.new("Highlight")
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.FillColor = Color3.fromRGB(0, 255, 100)
+	highlight.FillTransparency = 0.5
+	highlight.OutlineColor = Color3.fromRGB(0, 255, 150)
+	highlight.OutlineTransparency = 0
+	highlight.Enabled = false
+	highlight.Parent = TeamESP.folder
+
+	local box = Instance.new("SelectionBox")
+	box.LineThickness = 0.12
+	box.Color3 = Color3.fromRGB(0, 255, 100)
+	box.Transparency = 0
+	box.Visible = false
+	box.Parent = TeamESP.folder
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Size = UDim2.fromOffset(180, 50)
+	billboard.StudsOffset = Vector3.new(0, 3.5, 0)
+	billboard.AlwaysOnTop = true
+	billboard.Enabled = false
+	billboard.LightInfluence = 0
+	billboard.Parent = TeamESP.folder
+
+	local nameLabel = addText(billboard, player.DisplayName, 13, Enum.Font.GothamBold, Color3.fromRGB(0, 255, 100))
+	nameLabel.Size = UDim2.new(1, 0, 0, 20)
+	nameLabel.TextXAlignment = Enum.TextXAlignment.Center
+	nameLabel.TextStrokeTransparency = 0
+	nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+
+	local infoLabel = addText(billboard, "HP: -- | -- studs", 11, Enum.Font.GothamBold, WHITE)
+	infoLabel.Position = UDim2.fromOffset(0, 20)
+	infoLabel.Size = UDim2.new(1, 0, 0, 18)
+	infoLabel.TextXAlignment = Enum.TextXAlignment.Center
+	infoLabel.TextStrokeTransparency = 0
+	infoLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+
+	TeamESP.data[player] = {
+		highlight = highlight,
+		billboard = billboard,
+		nameLabel = nameLabel,
+		infoLabel = infoLabel,
+		box = box
+	}
+end
+
+local function isTeammate(player)
+	if player == LocalPlayer then return false end
+	local myTeam = LocalPlayer.Team
+	if not myTeam then return false end
+	return player.Team == myTeam
+end
+
+local function renderTeamESP()
+	if not TeamESP.active then return end
+	local localCharacter = LocalPlayer.Character
+	local localRoot = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
+
+	for player, data in pairs(TeamESP.data) do
+		if not isTeammate(player) then
+			destroyTeamESP(player)
+		else
+			local targetCharacter = player.Character
+			local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+			local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
+
+			if data and localRoot and targetCharacter and targetRoot and targetHumanoid then
+				data.highlight.Adornee = targetCharacter
+				data.highlight.Enabled = true
+				data.billboard.Adornee = targetRoot
+				data.billboard.Enabled = true
+				data.box.Adornee = targetCharacter
+				data.box.Visible = true
+
+				local distance = math.floor((localRoot.Position - targetRoot.Position).Magnitude)
+				data.nameLabel.Text = "[TEAM] " .. player.DisplayName
+				data.infoLabel.Text =
+					"HP: " .. math.floor(targetHumanoid.Health)
+					.. "/" .. math.floor(targetHumanoid.MaxHealth)
+					.. " | " .. distance .. " studs"
+			elseif data then
+				data.highlight.Enabled = false
+				data.billboard.Enabled = false
+				data.box.Visible = false
+			end
+		end
+	end
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if isTeammate(player) then
+			ensureTeamESP(player)
+		end
+	end
+end
+
+local function startTeamESP()
+	if TeamESP.active then return end
+	TeamESP.active = true
+	State.espTeam = true
+
+	TeamESP.folder = Instance.new("Folder")
+	TeamESP.folder.Name = "_ThoTeamESP"
+	TeamESP.folder.Parent = ScreenGui
+
+	local myTeam = LocalPlayer.Team
+	if not myTeam then
+		showNotice("Bạn không ở trong team nào.", false)
+	end
+
+	pcall(function()
+		RunService:UnbindFromRenderStep(TeamESP.bindName)
+	end)
+	RunService:BindToRenderStep(TeamESP.bindName, Enum.RenderPriority.Camera.Value + 1, renderTeamESP)
+end
+
+local function stopTeamESP()
+	TeamESP.active = false
+	State.espTeam = false
+
+	pcall(function()
+		RunService:UnbindFromRenderStep(TeamESP.bindName)
+	end)
+
+	for player, _ in pairs(TeamESP.data) do
+		destroyTeamESP(player)
+	end
+	TeamESP.data = {}
+
+	if TeamESP.folder then
+		TeamESP.folder:Destroy()
+		TeamESP.folder = nil
+	end
+end
+
+createToggle(ESPPage, "Định vị đồng đội", "Hiển thị khung xanh lá cho player cùng team. Không team → tắt.", false, function(value)
+	if value then startTeamESP() else stopTeamESP() end
+end, 5)
+
+-- ============================================================
+-- VISUAL TAB
+-- ============================================================
 createSection(VisualPage, "Visual", 1)
 
 local AntiLag = {
@@ -1939,7 +2181,61 @@ createToggle(VisualPage, "Màn hình đen", "Che toàn màn hình màu đen (tre
 	blackOverlay.Visible = value
 end, 4)
 
+-- Camera helpers (khai báo sớm để dùng chung cho magic + free cam)
+local magicActive = false
+local magicSplit = false
+local freeCamActive = false
+local magicButton = nil
+local magicSavedWalk, magicSavedJump
+local magicRenderName = "ThoMagicCam"
+local freeCamRenderName = "ThoFreeCam"
+local camYaw = 0
+local camPitch = 0
 local freeCamSavedWalk, freeCamSavedJump
+
+local function getCamRot()
+	return CFrame.fromEulerAnglesYXZ(math.rad(camPitch), math.rad(camYaw), 0)
+end
+
+local function getMoveInput()
+	local rot = getCamRot()
+	local look = rot.LookVector
+	local right = rot.RightVector
+	local move = Vector3.zero
+
+	if humanoid then
+		local md = humanoid.MoveDirection
+		if md.Magnitude > 0 then
+			local u = md.Unit
+			local f = u:Dot(look)
+			local r = u:Dot(right)
+			move += look * f + right * r
+		end
+	end
+
+	if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += look end
+	if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= look end
+	if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += right end
+	if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= right end
+	if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move += Vector3.yAxis end
+	if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move -= Vector3.yAxis end
+
+	if move.Magnitude > 1 then
+		move = move.Unit
+	end
+	return move
+end
+
+UserInputService.InputChanged:Connect(function(input)
+	if not (magicSplit or freeCamActive) then return end
+	if input.UserInputType == Enum.UserInputType.MouseMovement then
+		camYaw -= input.Delta.X * 0.4
+		camPitch = math.clamp(camPitch - input.Delta.Y * 0.4, -89, 89)
+	elseif input.UserInputType == Enum.UserInputType.Touch then
+		camYaw -= input.Delta.X * 0.4
+		camPitch = math.clamp(camPitch - input.Delta.Y * 0.4, -89, 89)
+	end
+end)
 
 local function renderFreeCam(dt)
 	if not freeCamActive then return end
@@ -2138,6 +2434,9 @@ createButton(VisualPage, "Tắt hiệu ứng", "Trở về tư thế bình thư�
 	showNotice("Đã tắt hiệu ứng.", true)
 end, 9)
 
+-- ============================================================
+-- SERVER TAB
+-- ============================================================
 createSection(ServerPage, "Server", 1)
 
 local autoRun = false
@@ -2255,7 +2554,40 @@ createButton(ServerPage, "Tham gia lại máy chủ", "Thử quay lại đúng J
 	end
 end, 4)
 
-createToggle(ServerPage, "Tự động chạy lại script", "Tự chạy lại sau khi đổi server.", false, function(value)
+createButton(ServerPage, "Lấy ID map này", "Hiện PlaceId và link map, kèm nút Copy.", function()
+	local placeId = game.PlaceId
+	local info = "PlaceID: " .. tostring(placeId)
+		.. "\n\nLink: https://www.roblox.com/games/" .. tostring(placeId)
+	showCopyPopup("Thông tin Map", info)
+end, 5)
+
+createButton(ServerPage, "Lấy JobID + script vào map", "Hiện JobID và script teleport vào map hiện tại.", function()
+	local jobId = game.JobId
+	local placeId = game.PlaceId
+
+	if jobId == "" then
+		showNotice("Không có JobID (có thể đang ở Studio).", false)
+		return
+	end
+
+	local script = string.format(
+		"game:GetService('TeleportService'):TeleportToPlaceInstance(%d, '%s', game.Players.LocalPlayer)",
+		placeId, jobId
+	)
+
+	local info = "JobID: " .. jobId
+		.. "\nPlaceID: " .. tostring(placeId)
+		.. "\n\nScript teleport:\n" .. script
+
+	showCopyPopup("JobID và Script", info)
+end, 6)
+
+-- ============================================================
+-- SETTINGS TAB
+-- ============================================================
+createSection(SettingsPage, "Script", 1)
+
+createToggle(SettingsPage, "Tự động chạy lại script", "Tự chạy lại sau khi đổi server (cần AUTORUN_URL + executor hỗ trợ).", false, function(value)
 	autoRun = value
 	if not value then
 		showNotice("Đã tắt tự động chạy lại.", true)
@@ -2278,36 +2610,112 @@ createToggle(ServerPage, "Tự động chạy lại script", "Tự chạy lại 
 	else
 		showNotice("Executor không hỗ trợ queue_on_teleport.", false)
 	end
-end, 5)
+end, 2)
 
-createButton(ServerPage, "Lấy ID map này", "Hiện PlaceId và link map, kèm nút Copy.", function()
-	local placeId = game.PlaceId
-	local info = "PlaceID: " .. tostring(placeId)
-		.. "\n\nLink: https://www.roblox.com/games/" .. tostring(placeId)
-	showCopyPopup("Thông tin Map", info)
-end, 6)
+createButton(SettingsPage, "Khởi động lại script", "Xóa GUI và chạy lại script mới nhất từ AUTORUN_URL.", function()
+	if getgenv()._ThoRestarting then
+		return
+	end
+	getgenv()._ThoRestarting = true
 
-createButton(ServerPage, "Lấy JobID + script vào map", "Hiện JobID và script teleport vào map hiện tại.", function()
-	local jobId = game.JobId
-	local placeId = game.PlaceId
-
-	if jobId == "" then
-		showNotice("Không có JobID (có thể đang ở Studio).", false)
+	if AUTORUN_URL == "" then
+		showNotice("Cần điền AUTORUN_URL ở đầu script.", false)
+		getgenv()._ThoRestarting = false
 		return
 	end
 
-	local script = string.format(
-		"game:GetService('TeleportService'):TeleportToPlaceInstance(%d, '%s', game.Players.LocalPlayer)",
-		placeId, jobId
-	)
+	local ok, src = pcall(game.HttpGet, game, AUTORUN_URL)
+	if not ok or not src then
+		showNotice("Không tải được source mới.", false)
+		getgenv()._ThoRestarting = false
+		return
+	end
 
-	local info = "JobID: " .. jobId
-		.. "\nPlaceID: " .. tostring(placeId)
-		.. "\n\nScript teleport:\n" .. script
+	showNotice("Đang khởi động lại...", true)
 
-	showCopyPopup("JobID và Script", info)
-end, 7)
+	task.spawn(function()
+		task.wait(0.4)
 
+		-- Cleanup
+		pcall(function() if State.fly then stopFly() end end)
+		pcall(function() if State.esp then stopESP() end end)
+		pcall(function() if State.espPro then stopESPPro() end end)
+		pcall(function() if State.espNPC then stopNPCESP() end end)
+		pcall(function() if State.espTeam then stopTeamESP() end end)
+		pcall(function() if State.antiLag then stopAntiLag() end end)
+		pcall(function() if magicSplit then stopMagicTeleport() end end)
+		pcall(function() if freeCamActive then stopFreeCam() end end)
+		pcall(function() if poseName then resetPose() end end)
+
+		task.wait(0.3)
+
+		pcall(function() ScreenGui:Destroy() end)
+		pcall(function() FloatGui:Destroy() end)
+
+		task.wait(0.5)
+
+		getgenv()._ThoRestarting = false
+
+		local fn = loadstring(src)
+		if fn then
+			task.spawn(fn)
+		end
+	end)
+end, 3)
+
+-- Save / load settings
+local saveEnabled = false
+local function saveAllSettings()
+	if not saveEnabled then return end
+	if type(writefile) ~= "function" then return end
+	local data = {}
+	for title, t in pairs(TOGGLE_REGISTRY) do
+		local ok, val = pcall(function() return t.Get() end)
+		if ok then data[title] = val end
+	end
+	pcall(function()
+		writefile(SAVE_FILE, HttpService:JSONEncode(data))
+	end)
+end
+
+local function loadAllSettings()
+	if type(readfile) ~= "function" or type(isfile) ~= "function" then
+		return nil
+	end
+	local exists = false
+	pcall(function() exists = isfile(SAVE_FILE) end)
+	if not exists then return nil end
+
+	local content
+	pcall(function() content = readfile(SAVE_FILE) end)
+	if not content then return nil end
+
+	local data
+	pcall(function() data = HttpService:JSONDecode(content) end)
+	return data
+end
+
+createToggle(SettingsPage, "Lưu cài đặt chức năng", "Lưu trạng thái các toggle vào file. Tự khôi phục khi chạy lại script.", false, function(value)
+	saveEnabled = value
+	if value then
+		saveAllSettings()
+		showNotice("Đã bật lưu. Trạng thái sẽ được giữ khi chuyển server.", true)
+	else
+		if type(writefile) == "function" and type(delfile) == "function" then
+			pcall(function() delfile(SAVE_FILE) end)
+		end
+		showNotice("Đã tắt lưu. File cài đặt đã bị xóa.", true)
+	end
+end, 4)
+
+-- Hook save vào mọi toggle change
+local originalSetStateHook = nil
+-- Đơn giản: dùng task.defer để save sau mỗi lần toggle thay đổi
+-- (thêm vào setState sau khi tất cả toggle đã được tạo)
+
+-- ============================================================
+-- FLOATING BUTTON
+-- ============================================================
 local FloatGui = Instance.new("ScreenGui")
 FloatGui.Name = GUI_NAME .. "_Float"
 FloatGui.ResetOnSpawn = false
@@ -2463,6 +2871,237 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 end)
 
+-- ============================================================
+-- MAGIC TELEPORT
+-- ============================================================
+local function startMagicMode()
+	refreshCharacter()
+	if not root or not humanoid then
+		showNotice("Chưa có nhân vật.", false)
+		return false
+	end
+	magicSavedWalk = humanoid.WalkSpeed
+	magicSavedJump = humanoid.JumpPower
+	humanoid.WalkSpeed = 0
+	humanoid.JumpPower = 0
+	return true
+end
+
+local function endMagicMode()
+	refreshCharacter()
+	if humanoid then
+		humanoid.WalkSpeed = magicSavedWalk or 16
+		humanoid.JumpPower = magicSavedJump or 50
+	end
+end
+
+local function renderMagic(dt)
+	if not magicSplit then return end
+	local cam = workspace.CurrentCamera
+	if not cam then return end
+	cam.CameraType = Enum.CameraType.Scriptable
+
+	local rot = getCamRot()
+	local move = getMoveInput()
+	local speed = 80
+	local newPos = cam.CFrame.Position + move * speed * dt
+	cam.CFrame = CFrame.new(newPos) * rot
+end
+
+local function splitCamera()
+	local cam = workspace.CurrentCamera
+	if not cam then return end
+	magicSplit = true
+	cam.CameraType = Enum.CameraType.Scriptable
+
+	local look = cam.CFrame.LookVector
+	camYaw = math.deg(math.atan2(-look.X, -look.Z))
+	camPitch = math.deg(math.asin(math.clamp(look.Y, -1, 1)))
+
+	pcall(function()
+		RunService:UnbindFromRenderStep(magicRenderName)
+	end)
+	RunService:BindToRenderStep(magicRenderName, Enum.RenderPriority.Camera.Value + 10, renderMagic)
+
+	if magicButton then
+		magicButton.Text = "TP"
+		magicButton.BackgroundColor3 = Color3.fromRGB(255, 100, 30)
+	end
+end
+
+local function mergeCamera()
+	local cam = workspace.CurrentCamera
+	if not cam then return end
+	local camPos = cam.CFrame.Position
+
+	pcall(function()
+		RunService:UnbindFromRenderStep(magicRenderName)
+	end)
+
+	refreshCharacter()
+	if root then
+		root.CFrame = CFrame.new(camPos + Vector3.new(0, 3, 0))
+	end
+
+	cam.CameraType = Enum.CameraType.Custom
+	refreshCharacter()
+	if humanoid then
+		cam.CameraSubject = humanoid
+	end
+
+	magicSplit = false
+
+	if magicButton then
+		magicButton.Text = "CAM"
+		magicButton.BackgroundColor3 = Color3.fromRGB(150, 30, 200)
+	end
+end
+
+local function stopMagicTeleport()
+	magicActive = false
+	magicSplit = false
+
+	pcall(function()
+		RunService:UnbindFromRenderStep(magicRenderName)
+	end)
+
+	if magicButton then
+		magicButton:Destroy()
+		magicButton = nil
+	end
+	endMagicMode()
+
+	local cam = workspace.CurrentCamera
+	if cam then
+		cam.CameraType = Enum.CameraType.Custom
+		refreshCharacter()
+		if humanoid then
+			cam.CameraSubject = humanoid
+		end
+	end
+end
+
+local function startMagicTeleport()
+	if not startMagicMode() then return end
+	magicActive = true
+
+	magicButton = Instance.new("TextButton")
+	magicButton.Size = UDim2.fromOffset(64, 64)
+	magicButton.Position = UDim2.new(0, 30, 0.5, -32)
+	magicButton.BackgroundColor3 = Color3.fromRGB(150, 30, 200)
+	magicButton.BorderSizePixel = 0
+	magicButton.Text = "CAM"
+	magicButton.TextSize = 16
+	magicButton.TextColor3 = WHITE
+	magicButton.Font = Enum.Font.GothamBold
+	magicButton.AutoButtonColor = false
+	magicButton.ZIndex = 300
+	magicButton.Parent = ScreenGui
+	addCorner(magicButton, 100)
+
+	local stroke = addStroke(magicButton, Color3.fromRGB(0, 170, 255), 0, 6)
+	local strokeGrad = Instance.new("UIGradient")
+	strokeGrad.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 170, 255)),
+		ColorSequenceKeypoint.new(0.25, Color3.fromRGB(0, 255, 200)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(100, 150, 255)),
+		ColorSequenceKeypoint.new(0.75, Color3.fromRGB(0, 255, 255)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 170, 255))
+	})
+	strokeGrad.Parent = stroke
+
+	local dragging2 = false
+	local dragOffset
+	local moved = false
+	local pressTime = 0
+
+	magicButton.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+			dragging2 = true
+			moved = false
+			pressTime = tick()
+			dragOffset = Vector2.new(input.Position.X, input.Position.Y) - magicButton.AbsolutePosition
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging2 and (input.UserInputType == Enum.UserInputType.MouseMovement
+			or input.UserInputType == Enum.UserInputType.Touch) then
+			local newPos = Vector2.new(input.Position.X, input.Position.Y) - dragOffset
+			if (newPos - magicButton.AbsolutePosition).Magnitude > 8 then
+				moved = true
+			end
+			magicButton.Position = UDim2.fromOffset(newPos.X, newPos.Y)
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+			if dragging2 and not moved and (tick() - pressTime) < 0.5 then
+				if magicSplit then
+					mergeCamera()
+					showNotice("Đã dịch chuyển!", true)
+				else
+					splitCamera()
+					showNotice("Bấm lần nữa để teleport.", true)
+				end
+			end
+			dragging2 = false
+		end
+	end)
+end
+
+local magicToggle
+magicToggle = createToggle(PlayerPage, "Dịch chuyển ảo thuật", "Bấm CAM để tách camera, bấm TP để teleport. Chuột/ngón để xoay.", false, function(value)
+	if value then
+		startMagicTeleport()
+	else
+		stopMagicTeleport()
+	end
+end, 30)
+
+-- ============================================================
+-- HOOK SAVE INTO TOGGLE REGISTRY
+-- ============================================================
+-- Wrap each toggle's Set to trigger save
+for title, t in pairs(TOGGLE_REGISTRY) do
+	local origSet = t.Set
+	t.Set = function(value)
+		origSet(value)
+		task.defer(saveAllSettings)
+	end
+end
+
+-- Load saved settings at startup
+task.spawn(function()
+	task.wait(1)
+
+	local saved = loadAllSettings()
+	if saved then
+		local saveFlag = saved["Lưu cài đặt chức năng"]
+		saveEnabled = saveFlag == true
+
+		for title, value in pairs(saved) do
+			if title ~= "Lưu cài đặt chức năng" then
+				local t = TOGGLE_REGISTRY[title]
+				if t then
+					pcall(function() t.Set(value) end)
+				end
+			end
+		end
+
+		if saveEnabled then
+			local t = TOGGLE_REGISTRY["Lưu cài đặt chức năng"]
+			if t then pcall(function() t.SetSilent(true) end) end
+		end
+	end
+end)
+
+-- ============================================================
+-- CHARACTER RESPAWN
+-- ============================================================
 LocalPlayer.CharacterAdded:Connect(function(char)
 	task.wait(0.15)
 	character = char
