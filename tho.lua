@@ -1,9 +1,9 @@
--- [ThoScript] BUILD: 2026-09-15 #18
--- - Thêm tab ESP: chứa định vị người chơi/nâng cao + Định vị NPC + Định vị đồng đội
--- - Thêm tab Settings: tự động chạy lại + khởi động lại script + lưu cài đặt
--- - Thêm "Tự động di chuyển tới vùng an toàn" (Player) + nút xuống đất
--- - Slider có nút khóa để tránh lỡ tay khi scroll
-local SCRIPT_BUILD = "2026-09-15-#18"
+-- [ThoScript] BUILD: 2026-09-15 #19
+-- - Fix vùng an toàn: scan rộng 4 mức, bay 150 studs trên điểm cao nhất, loop qua loading screen
+-- - Fix thông báo: hiển thị ngoài menu, góc phải màn hình, có icon ✓/✕
+-- - Fix anti-lag: queue + batch, weak table, skip nhân vật/camera
+-- - Sắp xếp lại: nút "Khác" trên, magic teleport dưới cùng tab Player
+local SCRIPT_BUILD = "2026-09-15-#19"
 local AUTORUN_URL = "https://raw.githubusercontent.com/thomaderobloxtools/script-only-use/main/tho.lua"
 local SAVE_FILE = "tho_script_settings.json"
 
@@ -300,30 +300,44 @@ local VisualPage = createPage("Visual")
 local ServerPage = createPage("Server")
 local SettingsPage = createPage("Settings")
 
+-- ============================================================
+-- NOTIFICATION (ngoài menu, góc phải)
+-- ============================================================
+local NOTICE_Z = 999999
+
 local function showNotice(text, success)
 	local notice = Instance.new("Frame")
 	notice.AnchorPoint = Vector2.new(1, 0)
-	notice.Position = UDim2.new(1, 18, 0, 56)
-	notice.Size = UDim2.fromOffset(240, 44)
+	notice.Position = UDim2.new(1, 320, 0, 12)
+	notice.Size = UDim2.fromOffset(280, 50)
 	notice.BackgroundColor3 = success and Color3.fromRGB(10, 67, 59) or Color3.fromRGB(67, 29, 39)
 	notice.BorderSizePixel = 0
-	notice.ZIndex = 70000
+	notice.ZIndex = NOTICE_Z
 	notice.Active = false
-	notice.Parent = Main
-	addCorner(notice, 8)
-	addStroke(notice, success and GREEN or RED, 0.55, 1)
+	notice.Parent = ScreenGui
+	addCorner(notice, 10)
+	addStroke(notice, success and GREEN or RED, 0.2, 2)
 
-	local label = addText(notice, text, 10, Enum.Font.GothamSemibold, WHITE)
-	label.Position = UDim2.fromOffset(10, 0)
-	label.Size = UDim2.new(1, -20, 1, 0)
+	local icon = addText(notice, success and "✓" or "✕", 20, Enum.Font.GothamBold, success and GREEN or RED)
+	icon.Position = UDim2.fromOffset(8, 0)
+	icon.Size = UDim2.fromOffset(28, 50)
+	icon.TextXAlignment = Enum.TextXAlignment.Center
+	icon.TextYAlignment = Enum.TextYAlignment.Center
+	icon.ZIndex = NOTICE_Z + 1
+
+	local label = addText(notice, text, 11, Enum.Font.GothamSemibold, WHITE)
+	label.Position = UDim2.fromOffset(40, 0)
+	label.Size = UDim2.new(1, -50, 1, 0)
 	label.TextWrapped = true
-	label.ZIndex = 70001
+	label.TextYAlignment = Enum.TextYAlignment.Center
+	label.ZIndex = NOTICE_Z + 1
 
-	tween(notice, 0.2, {Position = UDim2.new(1, -12, 0, 56)})
-	task.delay(2.1, function()
+	tween(notice, 0.28, {Position = UDim2.new(1, -16, 0, 12)})
+
+	task.delay(2.4, function()
 		if notice.Parent then
-			tween(notice, 0.18, {Position = UDim2.new(1, 18, 0, 56)})
-			task.wait(0.2)
+			tween(notice, 0.22, {Position = UDim2.new(1, 320, 0, 12)})
+			task.wait(0.3)
 			notice:Destroy()
 		end
 	end)
@@ -431,7 +445,6 @@ local function createSection(parent, title, order)
 	line.Parent = f
 end
 
--- TOGGLE_REGISTRY dùng để lưu/khôi phục trạng thái
 local TOGGLE_REGISTRY = {}
 
 local function createToggle(parent, title, description, defaultValue, callback, order)
@@ -614,7 +627,6 @@ local function createSlider(parent, title, description, minValue, maxValue, defa
 	valueLabel.Size = UDim2.fromOffset(40, 18)
 	valueLabel.TextXAlignment = Enum.TextXAlignment.Right
 
-	-- Nút khóa slider
 	local lockBtn = Instance.new("TextButton")
 	lockBtn.AnchorPoint = Vector2.new(1, 0)
 	lockBtn.Position = UDim2.new(1, -8, 0, 4)
@@ -1051,41 +1063,71 @@ createSlider(PlayerPage, "Tốc độ xoay", "Kéo để chỉnh tốc độ t�
 end, 13)
 
 -- ============================================================
--- SAFE ZONE
+-- SAFE ZONE (build #19 - scan rộng + loop qua loading screen)
 -- ============================================================
-local safeZoneBP = nil
+local safeZoneActive = false
 local safeZoneSavedPos = nil
+local safeZoneBP = nil
+local safeZoneLoopThread = nil
 
 local function getSafeHeight()
 	refreshCharacter()
 	if not root then return nil end
 	local pos = root.Position
 	local maxY = pos.Y
-	local ok, parts = pcall(function()
-		return workspace:GetPartBoundsInBox(CFrame.new(pos.X, pos.Y + 150, pos.Z), Vector3.new(200, 600, 200))
-	end)
-	if ok and parts then
-		for _, p in ipairs(parts) do
-			if p.Anchored and p.CanCollide and p.Name ~= "_ThoAirWalk" then
-				local top = p.Position.Y + p.Size.Y * 0.5
-				if top > maxY then maxY = top end
+
+	for _, radius in ipairs({100, 250, 500, 1000}) do
+		local ok, parts = pcall(function()
+			return workspace:GetPartBoundsInBox(
+				CFrame.new(pos.X, pos.Y + 200, pos.Z),
+				Vector3.new(radius * 2, 500, radius * 2)
+			)
+		end)
+		if ok and parts then
+			for _, p in ipairs(parts) do
+				if p.Anchored and p.CanCollide and p.Name ~= "_ThoAirWalk" then
+					local top = p.Position.Y + p.Size.Y * 0.5
+					if top > maxY then maxY = top end
+				end
 			end
 		end
 	end
-	return maxY + 35
+
+	local ok, boxCF, boxSize = pcall(function()
+		local cf, sz = workspace:GetBoundingBox()
+		return cf, sz
+	end)
+	if ok and boxCF and boxSize then
+		local top = boxCF.Position.Y + boxSize.Y * 0.5
+		if top > maxY then maxY = top end
+	end
+
+	return maxY
 end
 
 local function stopSafeZone(teleportBack)
+	safeZoneActive = false
+
+	if safeZoneLoopThread then
+		pcall(function() task.cancel(safeZoneLoopThread) end)
+		safeZoneLoopThread = nil
+	end
+
 	if safeZoneBP then
 		safeZoneBP:Destroy()
 		safeZoneBP = nil
 	end
+
 	if teleportBack and safeZoneSavedPos then
 		refreshCharacter()
 		if root then
-			root.CFrame = CFrame.new(safeZoneSavedPos + Vector3.new(0, 2, 0))
+			root.CFrame = CFrame.new(safeZoneSavedPos + Vector3.new(0, 5, 0))
+			pcall(function()
+				root.AssemblyLinearVelocity = Vector3.zero
+			end)
 		end
 	end
+
 	safeZoneSavedPos = nil
 end
 
@@ -1097,20 +1139,52 @@ local function startSafeZone()
 	end
 
 	safeZoneSavedPos = root.Position
-	local targetY = getSafeHeight()
-	if not targetY then targetY = root.Position.Y + 35 end
+	safeZoneActive = true
 
-	safeZoneBP = Instance.new("BodyPosition")
-	safeZoneBP.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-	safeZoneBP.P = 15000
-	safeZoneBP.D = 800
-	safeZoneBP.Position = Vector3.new(root.Position.X, targetY, root.Position.Z)
-	safeZoneBP.Parent = root
+	if safeZoneLoopThread then
+		pcall(function() task.cancel(safeZoneLoopThread) end)
+		safeZoneLoopThread = nil
+	end
 
-	showNotice("Đã lên vùng an toàn ở độ cao " .. math.floor(targetY - root.Position.Y) .. " studs.", true)
+	safeZoneLoopThread = task.spawn(function()
+		task.wait(3)
+
+		while safeZoneActive do
+			refreshCharacter()
+
+			if root and humanoid and humanoid.Health > 0 then
+				local highestY = getSafeHeight() or root.Position.Y
+				local targetY = highestY + 150
+
+				if not safeZoneBP or not safeZoneBP.Parent then
+					safeZoneBP = Instance.new("BodyPosition")
+					safeZoneBP.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+					safeZoneBP.P = 1e5
+					safeZoneBP.D = 1000
+					safeZoneBP.Parent = root
+				end
+
+				safeZoneBP.Position = Vector3.new(root.Position.X, targetY, root.Position.Z)
+
+				pcall(function()
+					root.AssemblyLinearVelocity = Vector3.zero
+					root.AssemblyAngularVelocity = Vector3.zero
+				end)
+			else
+				if safeZoneBP then
+					safeZoneBP:Destroy()
+					safeZoneBP = nil
+				end
+			end
+
+			task.wait(0.4)
+		end
+	end)
+
+	showNotice("Vùng an toàn đang hoạt động. Đợi map load rồi bay lên.", true)
 end
 
-createToggle(PlayerPage, "Tự động di chuyển tới vùng an toàn", "Bay lên độ cao an toàn, tránh quái tấn công. Tắt để trở lại.", false, function(value)
+createToggle(PlayerPage, "Tự động di chuyển tới vùng an toàn", "Bay 150 studs trên map, tự theo dõi khi map đổi. Bật để treo AFK.", false, function(value)
 	State.safeZone = value
 	if value then
 		startSafeZone()
@@ -1121,15 +1195,7 @@ end, 14)
 
 createButton(PlayerPage, "Di chuyển xuống lại mặt đất", "Quay về vị trí ban đầu trước khi bật vùng an toàn.", function()
 	if safeZoneSavedPos then
-		refreshCharacter()
-		if root then
-			root.CFrame = CFrame.new(safeZoneSavedPos + Vector3.new(0, 2, 0))
-		end
-		if safeZoneBP then
-			safeZoneBP:Destroy()
-			safeZoneBP = nil
-		end
-		safeZoneSavedPos = nil
+		stopSafeZone(true)
 		local t = TOGGLE_REGISTRY["Tự động di chuyển tới vùng an toàn"]
 		if t then t.SetSilent(false) end
 		State.safeZone = false
@@ -1139,14 +1205,14 @@ createButton(PlayerPage, "Di chuyển xuống lại mặt đất", "Quay về v�
 	end
 end, 15)
 
-createSection(PlayerPage, "Khác", 20)
+createSection(PlayerPage, "Khác", 26)
 
 createButton(PlayerPage, "Đặt lại nhân vật", "Reset nhân vật về trạng thái ban đầu.", function()
 	local char = LocalPlayer.Character
 	if not char then return end
 	local hum = char:FindFirstChildOfClass("Humanoid")
 	if hum then hum.Health = 0 end
-end, 21)
+end, 27)
 
 createButton(PlayerPage, "Dịch chuyển về điểm hồi sinh", "Teleport nhân vật về SpawnLocation của game.", function()
 	local spawn
@@ -1169,7 +1235,7 @@ createButton(PlayerPage, "Dịch chuyển về điểm hồi sinh", "Teleport nh
 		root.CFrame = CFrame.new(0, 50, 0)
 		showNotice("Không tìm thấy spawn, dùng mặc định.", true)
 	end
-end, 22)
+end, 28)
 
 -- ============================================================
 -- ESP TAB
@@ -1568,8 +1634,7 @@ end, 3)
 local NPCESP = {
 	active = false,
 	folder = nil,
-	data = {},  -- [model] = {highlight, billboard, nameLabel, infoLabel, box}
-	connection = nil,
+	data = {},
 	descConn = nil,
 	bindName = "ThoNPCESPUpdate"
 }
@@ -1737,7 +1802,7 @@ local function stopNPCESP()
 	end
 end
 
-createToggle(ESPPage, "Định vị NPC", "Hiển thị tên, máu, khoảng cách của NPC (Model có Humanoid không thuộc player).", false, function(value)
+createToggle(ESPPage, "Định vị NPC", "Hiển thị tên, máu, khoảng cách của NPC.", false, function(value)
 	if value then startNPCESP() else stopNPCESP() end
 end, 4)
 
@@ -1746,7 +1811,6 @@ local TeamESP = {
 	active = false,
 	folder = nil,
 	data = {},
-	connection = nil,
 	bindName = "ThoTeamESPUpdate"
 }
 
@@ -1866,8 +1930,7 @@ local function startTeamESP()
 	TeamESP.folder.Name = "_ThoTeamESP"
 	TeamESP.folder.Parent = ScreenGui
 
-	local myTeam = LocalPlayer.Team
-	if not myTeam then
+	if not LocalPlayer.Team then
 		showNotice("Bạn không ở trong team nào.", false)
 	end
 
@@ -1896,7 +1959,7 @@ local function stopTeamESP()
 	end
 end
 
-createToggle(ESPPage, "Định vị đồng đội", "Hiển thị khung xanh lá cho player cùng team. Không team → tắt.", false, function(value)
+createToggle(ESPPage, "Định vị đồng đội", "Hiển thị khung xanh lá cho player cùng team.", false, function(value)
 	if value then startTeamESP() else stopTeamESP() end
 end, 5)
 
@@ -1905,15 +1968,20 @@ end, 5)
 -- ============================================================
 createSection(VisualPage, "Visual", 1)
 
+-- ============================================================
+-- ANTILAG (build #19 - queue + batch, weak table, skip character)
+-- ============================================================
 local AntiLag = {
 	active = false,
-	originals = {},
+	originals = setmetatable({}, {__mode = "k"}),
 	connections = {},
+	pendingQueue = {},
 	lightingBackup = nil,
 	terrainBackup = nil,
 	qualityBackup = nil,
 	atmosphereBackup = nil,
-	skyBackup = nil
+	skyBackup = nil,
+	heartbeatConn = nil
 }
 
 local function backupLighting()
@@ -1942,12 +2010,12 @@ local function applyLighting()
 	Lighting.GlobalShadows = false
 	Lighting.FogEnd = 1e6
 	Lighting.FogStart = 1e6
-	Lighting.Brightness = 2
+	Lighting.Brightness = 1
 	Lighting.EnvironmentDiffuseScale = 0
 	Lighting.EnvironmentSpecularScale = 0
 	pcall(function()
-		Lighting.Ambient = Color3.fromRGB(180, 180, 180)
-		Lighting.OutdoorAmbient = Color3.fromRGB(180, 180, 180)
+		Lighting.Ambient = Color3.fromRGB(100, 100, 100)
+		Lighting.OutdoorAmbient = Color3.fromRGB(100, 100, 100)
 	end)
 
 	for _, effect in ipairs(Lighting:GetChildren()) do
@@ -1982,6 +2050,10 @@ end
 local function optimizeObject(obj)
 	if not obj or not obj.Parent then return end
 	if AntiLag.originals[obj] then return end
+
+	if character and obj:IsDescendantOf(character) then return end
+	local cam = workspace.CurrentCamera
+	if cam and obj:IsDescendantOf(cam) then return end
 
 	if obj:IsA("MeshPart") then
 		AntiLag.originals[obj] = {
@@ -2026,6 +2098,9 @@ local function optimizeObject(obj)
 	elseif obj:IsA("Decal") or obj:IsA("Texture") then
 		AntiLag.originals[obj] = { Transparency = obj.Transparency, type_ = "Decal" }
 		pcall(function() obj.Transparency = 1 end)
+	elseif obj:IsA("SurfaceAppearance") then
+		AntiLag.originals[obj] = { Parent = obj.Parent, type_ = "SurfaceAppearance" }
+		pcall(function() obj.Parent = nil end)
 	elseif obj:IsA("Light") then
 		AntiLag.originals[obj] = { Enabled = obj.Enabled, type_ = "Light" }
 		pcall(function() obj.Enabled = false end)
@@ -2070,25 +2145,41 @@ local function startAntiLag()
 		for i = 1, #descendants do
 			if not AntiLag.active then break end
 			optimizeObject(descendants[i])
-			if i % 200 == 0 then task.wait() end
+			if i % 100 == 0 then task.wait() end
 		end
 	end)
 
-	local conn = workspace.DescendantAdded:Connect(function(obj)
-		task.defer(function()
-			if AntiLag.active then optimizeObject(obj) end
-		end)
+	local descConn = workspace.DescendantAdded:Connect(function(obj)
+		if not AntiLag.active then return end
+		table.insert(AntiLag.pendingQueue, obj)
 	end)
-	table.insert(AntiLag.connections, conn)
+
+	local hbConn = RunService.Heartbeat:Connect(function()
+		if not AntiLag.active then return end
+		local processed = 0
+		while #AntiLag.pendingQueue > 0 and processed < 30 do
+			local obj = table.remove(AntiLag.pendingQueue, 1)
+			optimizeObject(obj)
+			processed += 1
+		end
+	end)
+
+	AntiLag.heartbeatConn = hbConn
+	table.insert(AntiLag.connections, descConn)
 end
 
 local function stopAntiLag()
 	AntiLag.active = false
+	AntiLag.pendingQueue = {}
 
 	for _, conn in ipairs(AntiLag.connections) do
 		pcall(function() conn:Disconnect() end)
 	end
 	AntiLag.connections = {}
+	if AntiLag.heartbeatConn then
+		pcall(function() AntiLag.heartbeatConn:Disconnect() end)
+		AntiLag.heartbeatConn = nil
+	end
 
 	restoreLighting()
 
@@ -2133,10 +2224,13 @@ local function stopAntiLag()
 					obj.Enabled = data.Enabled
 				elseif data.type_ == "Decal" then
 					obj.Transparency = data.Transparency
+				elseif data.type_ == "SurfaceAppearance" then
+					obj.Parent = data.Parent
 				end
 			end)
 		end
 	end
+	AntiLag.originals = setmetatable({}, {__mode = "k"})
 
 	local terrain = workspace:FindFirstChildOfClass("Terrain")
 	if terrain and AntiLag.terrainBackup then
@@ -2150,7 +2244,7 @@ local function stopAntiLag()
 	end
 end
 
-createToggle(VisualPage, "Giảm lag", "Hạ đồ họa mạnh (SmoothPlastic, tắt đèn, decal, sky, atmosphere).", false, function(value)
+createToggle(VisualPage, "Giảm lag", "Hạ đồ họa mạnh. Bật nếu FPS thấp.", false, function(value)
 	State.antiLag = value
 	if value then startAntiLag() else stopAntiLag() end
 end, 2)
@@ -2181,7 +2275,7 @@ createToggle(VisualPage, "Màn hình đen", "Che toàn màn hình màu đen (tre
 	blackOverlay.Visible = value
 end, 4)
 
--- Camera helpers (khai báo sớm để dùng chung cho magic + free cam)
+-- Camera helpers
 local magicActive = false
 local magicSplit = false
 local freeCamActive = false
@@ -2295,7 +2389,7 @@ local function startFreeCam()
 	RunService:BindToRenderStep(freeCamRenderName, Enum.RenderPriority.Camera.Value + 10, renderFreeCam)
 end
 
-createToggle(VisualPage, "Xem từ xa", "Nhân vật đứng yên, camera bay tự do (WASD + Space/Ctrl + Shift + chuột/ngón để xoay).", false, function(value)
+createToggle(VisualPage, "Xem từ xa", "Nhân vật đứng yên, camera bay tự do.", false, function(value)
 	if value then startFreeCam() else stopFreeCam() end
 end, 5)
 
@@ -2587,7 +2681,7 @@ end, 6)
 -- ============================================================
 createSection(SettingsPage, "Script", 1)
 
-createToggle(SettingsPage, "Tự động chạy lại script", "Tự chạy lại sau khi đổi server (cần AUTORUN_URL + executor hỗ trợ).", false, function(value)
+createToggle(SettingsPage, "Tự động chạy lại script", "Tự chạy lại sau khi đổi server.", false, function(value)
 	autoRun = value
 	if not value then
 		showNotice("Đã tắt tự động chạy lại.", true)
@@ -2612,7 +2706,7 @@ createToggle(SettingsPage, "Tự động chạy lại script", "Tự chạy lạ
 	end
 end, 2)
 
-createButton(SettingsPage, "Khởi động lại script", "Xóa GUI và chạy lại script mới nhất từ AUTORUN_URL.", function()
+createButton(SettingsPage, "Khởi động lại script", "Xóa GUI và chạy lại script mới nhất.", function()
 	if getgenv()._ThoRestarting then
 		return
 	end
@@ -2636,7 +2730,6 @@ createButton(SettingsPage, "Khởi động lại script", "Xóa GUI và chạy l
 	task.spawn(function()
 		task.wait(0.4)
 
-		-- Cleanup
 		pcall(function() if State.fly then stopFly() end end)
 		pcall(function() if State.esp then stopESP() end end)
 		pcall(function() if State.espPro then stopESPPro() end end)
@@ -2646,6 +2739,7 @@ createButton(SettingsPage, "Khởi động lại script", "Xóa GUI và chạy l
 		pcall(function() if magicSplit then stopMagicTeleport() end end)
 		pcall(function() if freeCamActive then stopFreeCam() end end)
 		pcall(function() if poseName then resetPose() end end)
+		pcall(function() if safeZoneActive then stopSafeZone(false) end end)
 
 		task.wait(0.3)
 
@@ -2663,7 +2757,6 @@ createButton(SettingsPage, "Khởi động lại script", "Xóa GUI và chạy l
 	end)
 end, 3)
 
--- Save / load settings
 local saveEnabled = false
 local function saveAllSettings()
 	if not saveEnabled then return end
@@ -2695,7 +2788,7 @@ local function loadAllSettings()
 	return data
 end
 
-createToggle(SettingsPage, "Lưu cài đặt chức năng", "Lưu trạng thái các toggle vào file. Tự khôi phục khi chạy lại script.", false, function(value)
+createToggle(SettingsPage, "Lưu cài đặt chức năng", "Lưu trạng thái toggle vào file, tự khôi phục khi chạy lại.", false, function(value)
 	saveEnabled = value
 	if value then
 		saveAllSettings()
@@ -2707,11 +2800,6 @@ createToggle(SettingsPage, "Lưu cài đặt chức năng", "Lưu trạng thái 
 		showNotice("Đã tắt lưu. File cài đặt đã bị xóa.", true)
 	end
 end, 4)
-
--- Hook save vào mọi toggle change
-local originalSetStateHook = nil
--- Đơn giản: dùng task.defer để save sau mỗi lần toggle thay đổi
--- (thêm vào setState sau khi tất cả toggle đã được tạo)
 
 -- ============================================================
 -- FLOATING BUTTON
@@ -2872,7 +2960,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 end)
 
 -- ============================================================
--- MAGIC TELEPORT
+-- MAGIC TELEPORT (dưới cùng tab Player)
 -- ============================================================
 local function startMagicMode()
 	refreshCharacter()
@@ -3065,7 +3153,6 @@ end, 30)
 -- ============================================================
 -- HOOK SAVE INTO TOGGLE REGISTRY
 -- ============================================================
--- Wrap each toggle's Set to trigger save
 for title, t in pairs(TOGGLE_REGISTRY) do
 	local origSet = t.Set
 	t.Set = function(value)
@@ -3074,7 +3161,6 @@ for title, t in pairs(TOGGLE_REGISTRY) do
 	end
 end
 
--- Load saved settings at startup
 task.spawn(function()
 	task.wait(1)
 
