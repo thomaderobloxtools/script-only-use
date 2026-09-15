@@ -1,10 +1,8 @@
--- [ThoScript] BUILD: 2026-09-15 #23
--- - Fix auto-load toggle nguy hiểm từ file save (Bay/Noclip/Vùng an toàn/...)
--- - Thêm cleanup toàn bộ BodyMover + reset humanoid khi script start
--- - Đăng ký cleanup cho safe zone thread
-local SCRIPT_BUILD = "2026-09-15-#23"
+-- [ThoScript] BUILD: 2026-09-15 #24
+-- - Xoá chức năng "Lưu cài đặt chức năng"
+-- - Thêm chức năng "Xem FPS" ở góc trên bên trái
+local SCRIPT_BUILD = "2026-09-15-#24"
 local AUTORUN_URL = "https://raw.githubusercontent.com/thomaderobloxtools/script-only-use/main/tho.lua"
-local SAVE_FILE = "tho_script_settings.json"
 
 repeat task.wait() until game:IsLoaded()
 
@@ -3395,6 +3393,12 @@ createToggle(SettingsPage, "Tự động chạy lại script", "Tự chạy lạ
 	end
 end, 2)
 
+createToggle(SettingsPage, "Xem FPS", "Hiển thị FPS thật ở góc trên bên trái màn hình.", false, function(value)
+	if FPSDisplay then
+		FPSDisplay.Set(value)
+	end
+end, 3)
+
 createButton(SettingsPage, "Khởi động lại script", "Xóa GUI và chạy lại script mới nhất.", function()
 	if getgenv()._ThoRestarting then
 		return
@@ -3447,52 +3451,83 @@ createButton(SettingsPage, "Khởi động lại script", "Xóa GUI và chạy l
 			task.spawn(fn)
 		end
 	end)
-end, 3)
+end, 4)
 
-local saveEnabled = false
-local function saveAllSettings()
-	if not saveEnabled then return end
-	if type(writefile) ~= "function" then return end
-	local data = {}
-	for title, t in pairs(TOGGLE_REGISTRY) do
-		local ok, val = pcall(function() return t.Get() end)
-		if ok then data[title] = val end
+-- ===== FPS Display =====
+local FPSDisplay = {}
+do
+	local fpsFrame = Instance.new("Frame")
+	fpsFrame.Name = "ThoFPSFrame"
+	fpsFrame.Position = UDim2.fromOffset(10, 10)
+	fpsFrame.Size = UDim2.fromOffset(120, 30)
+	fpsFrame.BackgroundColor3 = Color3.fromRGB(8, 25, 50)
+	fpsFrame.BackgroundTransparency = 0.25
+	fpsFrame.BorderSizePixel = 0
+	fpsFrame.Visible = false
+	fpsFrame.ZIndex = 70000
+	fpsFrame.Active = false
+	fpsFrame.Parent = ScreenGui
+	addCorner(fpsFrame, 6)
+	addStroke(fpsFrame, BLUE_5, 0.4, 1)
+
+	local fpsLabel = addText(fpsFrame, "FPS: 0", 13, Enum.Font.GothamBold, GREEN)
+	fpsLabel.Size = UDim2.fromScale(1, 1)
+	fpsLabel.TextXAlignment = Enum.TextXAlignment.Center
+	fpsLabel.TextYAlignment = Enum.TextYAlignment.Center
+	fpsLabel.ZIndex = 70001
+
+	local fpsConn = nil
+	local frameCount = 0
+	local elapsed = 0
+
+	local function startFPSLoop()
+		if fpsConn then return end
+		frameCount = 0
+		elapsed = 0
+		fpsConn = RunService.RenderStepped:Connect(function(dt)
+			frameCount += 1
+			elapsed += dt
+			if elapsed >= 0.5 then
+				local fps = math.floor(frameCount / elapsed + 0.5)
+				fpsLabel.Text = "FPS: " .. fps
+				if fps >= 50 then
+					fpsLabel.TextColor3 = GREEN
+				elseif fps >= 30 then
+					fpsLabel.TextColor3 = Color3.fromRGB(255, 200, 60)
+				else
+					fpsLabel.TextColor3 = RED
+				end
+				frameCount = 0
+				elapsed = 0
+			end
+		end)
 	end
-	pcall(function()
-		writefile(SAVE_FILE, HttpService:JSONEncode(data))
+
+	local function stopFPSLoop()
+		if fpsConn then
+			fpsConn:Disconnect()
+			fpsConn = nil
+		end
+	end
+
+	function FPSDisplay.Set(value)
+		if value then
+			fpsFrame.Visible = true
+			startFPSLoop()
+		else
+			fpsFrame.Visible = false
+			stopFPSLoop()
+			fpsLabel.Text = "FPS: 0"
+		end
+	end
+
+	addCleanup(function()
+		stopFPSLoop()
+		if fpsFrame then pcall(function() fpsFrame:Destroy() end) end
 	end)
 end
 
-local function loadAllSettings()
-	if type(readfile) ~= "function" or type(isfile) ~= "function" then
-		return nil
-	end
-	local exists = false
-	pcall(function() exists = isfile(SAVE_FILE) end)
-	if not exists then return nil end
-
-	local content
-	pcall(function() content = readfile(SAVE_FILE) end)
-	if not content then return nil end
-
-	local data
-	pcall(function() data = HttpService:JSONDecode(content) end)
-	return data
-end
-
-createToggle(SettingsPage, "Lưu cài đặt chức năng", "Lưu trạng thái toggle vào file, tự khôi phục khi chạy lại.", false, function(value)
-	saveEnabled = value
-	if value then
-		saveAllSettings()
-		showNotice("Đã bật lưu. Trạng thái sẽ được giữ khi chuyển server.", true)
-	else
-		if type(writefile) == "function" and type(delfile) == "function" then
-			pcall(function() delfile(SAVE_FILE) end)
-		end
-		showNotice("Đã tắt lưu. File cài đặt đã bị xóa.", true)
-	end
-end, 4)
-
+-- ===== Floating Button =====
 local FloatingButton = Instance.new("TextButton")
 FloatingButton.AnchorPoint = Vector2.new(1, 0)
 FloatingButton.Position = UDim2.new(1, -20, 0, 100)
@@ -3637,52 +3672,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
 	if input.KeyCode == Enum.KeyCode.RightShift then
 		setMenuVisible(not menuOpen)
-	end
-end)
-
-for title, t in pairs(TOGGLE_REGISTRY) do
-	local origSet = t.Set
-	t.Set = function(value)
-		origSet(value)
-		task.defer(saveAllSettings)
-	end
-end
-
-task.spawn(function()
-	task.wait(2)
-
-	local saved = loadAllSettings()
-	if saved then
-		local saveFlag = saved["Lưu cài đặt chức năng"]
-		saveEnabled = saveFlag == true
-
-		local NO_AUTOLOAD = {
-			["Bay"] = true,
-			["Đi trên không"] = true,
-			["Đi xuyên tường"] = true,
-			["Nằm"] = true,
-			["Ngồi"] = true,
-			["Xoay"] = true,
-			["Tự động di chuyển tới vùng an toàn"] = true,
-			["Dịch chuyển ảo thuật"] = true,
-			["Màn hình trắng"] = true,
-			["Màn hình đen"] = true,
-			["Tự động chạy lại script"] = true,
-		}
-
-		for title, value in pairs(saved) do
-			if title ~= "Lưu cài đặt chức năng" and not NO_AUTOLOAD[title] then
-				local t = TOGGLE_REGISTRY[title]
-				if t then
-					pcall(function() t.Set(value) end)
-				end
-			end
-		end
-
-		if saveEnabled then
-			local t = TOGGLE_REGISTRY["Lưu cài đặt chức năng"]
-			if t then pcall(function() t.SetSilent(true) end) end
-		end
 	end
 end)
 
