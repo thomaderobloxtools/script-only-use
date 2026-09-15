@@ -3375,19 +3375,20 @@ createSection(SettingsPage, "Script", 1)
 
 local FPSDisplay = {}
 do
-	local fpsFrame = Instance.new("Frame")
-	fpsFrame.Name = "ThoFPSFrame"
-	fpsFrame.Position = UDim2.fromOffset(10, 10)
-	fpsFrame.Size = UDim2.fromOffset(120, 30)
-	fpsFrame.BackgroundColor3 = Color3.fromRGB(8, 25, 50)
-	fpsFrame.BackgroundTransparency = 0.25
-	fpsFrame.BorderSizePixel = 0
-	fpsFrame.Visible = false
-	fpsFrame.ZIndex = 70000
-	fpsFrame.Active = false
-	fpsFrame.Parent = ScreenGui
-	addCorner(fpsFrame, 6)
-	addStroke(fpsFrame, BLUE_5, 0.4, 1)
+  local fpsFrame = Instance.new("Frame")
+  fpsFrame.Name = "ThoFPSFrame"
+  fpsFrame.AnchorPoint = Vector2.new(0, 1)
+  fpsFrame.Position = UDim2.new(0, 10, 1, -60)
+  fpsFrame.Size = UDim2.fromOffset(120, 30)
+  fpsFrame.BackgroundColor3 = Color3.fromRGB(8, 25, 50)
+  fpsFrame.BackgroundTransparency = 0.25
+  fpsFrame.BorderSizePixel = 0
+  fpsFrame.Visible = false
+  fpsFrame.ZIndex = 70000
+  fpsFrame.Active = false
+  fpsFrame.Parent = ScreenGui
+  addCorner(fpsFrame, 6)
+  addStroke(fpsFrame, BLUE_5, 0.4, 1)
 
 	local fpsLabel = addText(fpsFrame, "FPS: 0", 13, Enum.Font.GothamBold, GREEN)
 	fpsLabel.Size = UDim2.fromScale(1, 1)
