@@ -1,8 +1,8 @@
--- [ThoScript] BUILD: 2026-09-15 #22
--- - Fix safe zone bay vô hạn: scan 1 lần, targetY cố định
--- - Nâng cấp shader mưa: 2 layer + splash/spray + color grading + sấm
--- - Nâng cấp shader thư giãn: hoàng hôn + bird/wind sound
-local SCRIPT_BUILD = "2026-09-15-#22"
+-- [ThoScript] BUILD: 2026-09-15 #23
+-- - Fix auto-load toggle nguy hiểm từ file save (Bay/Noclip/Vùng an toàn/...)
+-- - Thêm cleanup toàn bộ BodyMover + reset humanoid khi script start
+-- - Đăng ký cleanup cho safe zone thread
+local SCRIPT_BUILD = "2026-09-15-#23"
 local AUTORUN_URL = "https://raw.githubusercontent.com/thomaderobloxtools/script-only-use/main/tho.lua"
 local SAVE_FILE = "tho_script_settings.json"
 
@@ -19,6 +19,48 @@ local SoundService = game:GetService("SoundService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+if getgenv()._ThoCleanupFns then
+	for i = #getgenv()._ThoCleanupFns, 1, -1 do
+		pcall(getgenv()._ThoCleanupFns[i])
+	end
+end
+getgenv()._ThoCleanupFns = {}
+
+local function addCleanup(fn)
+	table.insert(getgenv()._ThoCleanupFns, fn)
+end
+
+do
+	local char = LocalPlayer.Character
+	if char then
+		for _, obj in ipairs(char:GetDescendants()) do
+			if obj:IsA("BodyPosition") or obj:IsA("BodyVelocity")
+				or obj:IsA("BodyGyro") or obj:IsA("BodyAngularVelocity")
+				or obj:IsA("LinearVelocity") or obj:IsA("AlignOrientation") then
+				pcall(function() obj:Destroy() end)
+			end
+		end
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if hum then
+			pcall(function()
+				hum.PlatformStand = false
+				hum.WalkSpeed = 16
+				hum.JumpPower = 50
+				hum.AutoRotate = true
+				hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+			end)
+		end
+		if char:FindFirstChild("Animate") then
+			pcall(function() char.Animate.Disabled = false end)
+		end
+	end
+	for _, obj in ipairs(workspace:GetChildren()) do
+		if obj.Name == "_ThoAirWalk" or obj.Name == "_ThoFlyAtt" then
+			pcall(function() obj:Destroy() end)
+		end
+	end
+end
 
 local GUI_NAME = "ThoScript"
 local BLUE_1 = Color3.fromRGB(7, 18, 38)
@@ -1305,6 +1347,14 @@ local function startSafeZone()
 
 			task.wait(0.3)
 		end
+	end)
+
+	addCleanup(function()
+		safeZoneActive = false
+		if safeZoneLoopThread then
+			pcall(function() task.cancel(safeZoneLoopThread) end)
+		end
+		if safeZoneBP then pcall(function() safeZoneBP:Destroy() end) end
 	end)
 end
 
@@ -3599,15 +3649,29 @@ for title, t in pairs(TOGGLE_REGISTRY) do
 end
 
 task.spawn(function()
-	task.wait(1)
+	task.wait(2)
 
 	local saved = loadAllSettings()
 	if saved then
 		local saveFlag = saved["Lưu cài đặt chức năng"]
 		saveEnabled = saveFlag == true
 
+		local NO_AUTOLOAD = {
+			["Bay"] = true,
+			["Đi trên không"] = true,
+			["Đi xuyên tường"] = true,
+			["Nằm"] = true,
+			["Ngồi"] = true,
+			["Xoay"] = true,
+			["Tự động di chuyển tới vùng an toàn"] = true,
+			["Dịch chuyển ảo thuật"] = true,
+			["Màn hình trắng"] = true,
+			["Màn hình đen"] = true,
+			["Tự động chạy lại script"] = true,
+		}
+
 		for title, value in pairs(saved) do
-			if title ~= "Lưu cài đặt chức năng" then
+			if title ~= "Lưu cài đặt chức năng" and not NO_AUTOLOAD[title] then
 				local t = TOGGLE_REGISTRY[title]
 				if t then
 					pcall(function() t.Set(value) end)
