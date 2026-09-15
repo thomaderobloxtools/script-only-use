@@ -1,8 +1,9 @@
--- [ThoScript] BUILD: 2026-09-15 #20
--- - Fix vùng an toàn: giảm 150 -> 60 studs, không bay quá cao
--- - Di chuyển magic teleport lên trên section "Khác"
--- - Thêm 3 shader: Bản đồ sáng, Bản đồ mưa, Bản đồ thư giãn (click 2 lần để toggle)
-local SCRIPT_BUILD = "2026-09-15-#20"
+-- [ThoScript] BUILD: 2026-09-15 #21
+-- - Fix duplicate camera helpers gây lỗi script
+-- - Move FloatGui creation lên sớm
+-- - Safe zone offset giảm còn 35 studs
+-- - Magic teleport order 16 (ngay dưới safe zone, trên "Khác")
+local SCRIPT_BUILD = "2026-09-15-#21"
 local AUTORUN_URL = "https://raw.githubusercontent.com/thomaderobloxtools/script-only-use/main/tho.lua"
 local SAVE_FILE = "tho_script_settings.json"
 
@@ -71,6 +72,9 @@ local function addText(parent, text, size, font, color)
 	return label
 end
 
+-- ============================================================
+-- SCREEN GUI + FLOAT GUI (tạo sớm)
+-- ============================================================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = GUI_NAME
 ScreenGui.ResetOnSpawn = false
@@ -78,6 +82,14 @@ ScreenGui.IgnoreGuiInset = true
 ScreenGui.DisplayOrder = 999999
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = PlayerGui
+
+local FloatGui = Instance.new("ScreenGui")
+FloatGui.Name = GUI_NAME .. "_Float"
+FloatGui.ResetOnSpawn = false
+FloatGui.IgnoreGuiInset = true
+FloatGui.DisplayOrder = 2000000
+FloatGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+FloatGui.Parent = PlayerGui
 
 local MAIN_WIDTH = 620
 local MAIN_HEIGHT = 400
@@ -300,7 +312,7 @@ local ServerPage = createPage("Server")
 local SettingsPage = createPage("Settings")
 
 -- ============================================================
--- NOTIFICATION (ngoài menu, góc phải)
+-- NOTIFICATION
 -- ============================================================
 local NOTICE_Z = 999999
 
@@ -590,7 +602,6 @@ local function createButton(parent, title, description, callback, order)
 	return button
 end
 
--- Button đổi màu khi active (dùng cho shader button)
 local function createStateButton(parent, title, description, onActivate, onDeactivate, order)
 	local row = Instance.new("Frame")
 	row.LayoutOrder = order
@@ -875,11 +886,73 @@ local ALL_STATES = {
 	Enum.HumanoidStateType.Swimming
 }
 
-local flyConnection, flyActive, flyBV
+-- ============================================================
+-- CAMERA HELPERS (khai báo DUY NHẤT 1 lần, dùng chung)
+-- ============================================================
+local magicActive = false
+local magicSplit = false
+local freeCamActive = false
+local magicButton = nil
+local magicSavedWalk, magicSavedJump
+local magicRenderName = "ThoMagicCam"
+local freeCamRenderName = "ThoFreeCam"
+local camYaw = 0
+local camPitch = 0
+local freeCamSavedWalk, freeCamSavedJump
+
+local function getCamRot()
+	return CFrame.fromEulerAnglesYXZ(math.rad(camPitch), math.rad(camYaw), 0)
+end
+
+local function getMoveInput()
+	local rot = getCamRot()
+	local look = rot.LookVector
+	local right = rot.RightVector
+	local move = Vector3.zero
+
+	if humanoid then
+		local md = humanoid.MoveDirection
+		if md.Magnitude > 0 then
+			local u = md.Unit
+			local f = u:Dot(look)
+			local r = u:Dot(right)
+			move += look * f + right * r
+		end
+	end
+
+	if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += look end
+	if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= look end
+	if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += right end
+	if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= right end
+	if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move += Vector3.yAxis end
+	if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move -= Vector3.yAxis end
+
+	if move.Magnitude > 1 then
+		move = move.Unit
+	end
+	return move
+end
+
+UserInputService.InputChanged:Connect(function(input)
+	if not (magicSplit or freeCamActive) then return end
+	if input.UserInputType == Enum.UserInputType.MouseMovement then
+		camYaw -= input.Delta.X * 0.4
+		camPitch = math.clamp(camPitch - input.Delta.Y * 0.4, -89, 89)
+	elseif input.UserInputType == Enum.UserInputType.Touch then
+		camYaw -= input.Delta.X * 0.4
+		camPitch = math.clamp(camPitch - input.Delta.Y * 0.4, -89, 89)
+	end
+end)
+
+-- ============================================================
+-- PLAYER PAGE - Section Player
+-- ============================================================
+createSection(PlayerPage, "Player", 1)
+
+local flyConnection, flyBV
 
 local function stopFly()
 	State.fly = false
-	flyActive = false
 	if flyConnection then flyConnection:Disconnect() flyConnection = nil end
 	if flyBV then flyBV:Destroy() flyBV = nil end
 	refreshCharacter()
@@ -901,8 +974,6 @@ local function startFly()
 		State.fly = false
 		return
 	end
-
-	flyActive = true
 
 	for _, state in ipairs(ALL_STATES) do
 		pcall(function() humanoid:SetStateEnabled(state, false) end)
@@ -927,7 +998,7 @@ local function startFly()
 	flyBV.Parent = root
 
 	flyConnection = RunService.RenderStepped:Connect(function(dt)
-		if not flyActive or not root or not root.Parent then return end
+		if not State.fly or not root or not root.Parent then return end
 		local cam = workspace.CurrentCamera
 		if not cam then return end
 
@@ -960,8 +1031,6 @@ local function startFly()
 	end)
 end
 
-createSection(PlayerPage, "Player", 1)
-
 createToggle(PlayerPage, "Bay", "Dùng joystick/WASD, Space/Ctrl để lên xuống.", false, function(value)
 	State.fly = value
 	if value then startFly() else stopFly() end
@@ -973,11 +1042,9 @@ end, 3)
 
 local airPlatform
 local airConnection
-local airActive = false
 
 local function stopAirWalk()
 	State.airWalk = false
-	airActive = false
 	if airConnection then airConnection:Disconnect() airConnection = nil end
 	if airPlatform then airPlatform:Destroy() airPlatform = nil end
 end
@@ -985,7 +1052,6 @@ end
 local function startAirWalk()
 	refreshCharacter()
 	if not root then return end
-	airActive = true
 
 	airPlatform = Instance.new("Part")
 	airPlatform.Name = "_ThoAirWalk"
@@ -999,7 +1065,7 @@ local function startAirWalk()
 	airPlatform.Parent = workspace
 
 	airConnection = RunService.Heartbeat:Connect(function()
-		if not airActive or not root or not root.Parent or not airPlatform then return end
+		if not State.airWalk or not root or not root.Parent or not airPlatform then return end
 		airPlatform.CFrame = CFrame.new(root.Position - Vector3.new(0, 3.2, 0))
 	end)
 end
@@ -1137,7 +1203,7 @@ createSlider(PlayerPage, "Tốc độ xoay", "Kéo để chỉnh tốc độ t�
 end, 13)
 
 -- ============================================================
--- SAFE ZONE (build #20 - giảm 150 -> 60 studs)
+-- SAFE ZONE (offset 35 studs)
 -- ============================================================
 local safeZoneActive = false
 local safeZoneSavedPos = nil
@@ -1248,10 +1314,10 @@ local function startSafeZone()
 		end
 	end)
 
-	showNotice("Vùng an toàn đang bật (cách mặt đất " .. SAFE_HEIGHT_OFFSET .. " studs).", true)
+	showNotice("Vùng an toàn đang bật (cách " .. SAFE_HEIGHT_OFFSET .. " studs).", true)
 end
 
-createToggle(PlayerPage, "Tự động di chuyển tới vùng an toàn", "Bay 60 studs trên map, tự theo dõi khi map đổi. Bật để treo AFK.", false, function(value)
+createToggle(PlayerPage, "Tự động di chuyển tới vùng an toàn", "Bay 35 studs trên map, tự theo dõi khi map đổi. Bật để treo AFK.", false, function(value)
 	State.safeZone = value
 	if value then
 		startSafeZone()
@@ -1275,50 +1341,6 @@ end, 15)
 -- ============================================================
 -- MAGIC TELEPORT (order 16 - ngay dưới safe zone, trên "Khác")
 -- ============================================================
-local magicActive = false
-local magicSplit = false
-local freeCamActive = false
-local magicButton = nil
-local magicSavedWalk, magicSavedJump
-local magicRenderName = "ThoMagicCam"
-local freeCamRenderName = "ThoFreeCam"
-local camYaw = 0
-local camPitch = 0
-local freeCamSavedWalk, freeCamSavedJump
-
-local function getCamRot()
-	return CFrame.fromEulerAnglesYXZ(math.rad(camPitch), math.rad(camYaw), 0)
-end
-
-local function getMoveInput()
-	local rot = getCamRot()
-	local look = rot.LookVector
-	local right = rot.RightVector
-	local move = Vector3.zero
-
-	if humanoid then
-		local md = humanoid.MoveDirection
-		if md.Magnitude > 0 then
-			local u = md.Unit
-			local f = u:Dot(look)
-			local r = u:Dot(right)
-			move += look * f + right * r
-		end
-	end
-
-	if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += look end
-	if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= look end
-	if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += right end
-	if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= right end
-	if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move += Vector3.yAxis end
-	if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move -= Vector3.yAxis end
-
-	if move.Magnitude > 1 then
-		move = move.Unit
-	end
-	return move
-end
-
 local function startMagicMode()
 	refreshCharacter()
 	if not root or not humanoid then
@@ -1507,7 +1529,7 @@ magicToggle = createToggle(PlayerPage, "Dịch chuyển ảo thuật", "Bấm CA
 	end
 end, 16)
 
--- "Khác" section (order 26 - dưới magic)
+-- "Khác" section
 createSection(PlayerPage, "Khác", 26)
 
 createButton(PlayerPage, "Đặt lại nhân vật", "Reset nhân vật về trạng thái ban đầu.", function()
@@ -1673,6 +1695,7 @@ createToggle(ESPPage, "Định vị người chơi", "Hiển thị khung, tên, 
 	if value then startESP() else stopESP() end
 end, 2)
 
+-- ESP Pro
 local ESPPro = {
 	active = false,
 	folder = nil,
@@ -2574,62 +2597,9 @@ createToggle(VisualPage, "Màn hình đen", "Che toàn màn hình màu đen (tre
 	blackOverlay.Visible = value
 end, 4)
 
--- Camera helpers
-local magicActive = false
-local magicSplit = false
-local freeCamActive = false
-local magicButton = nil
-local magicSavedWalk, magicSavedJump
-local magicRenderName = "ThoMagicCam"
-local freeCamRenderName = "ThoFreeCam"
-local camYaw = 0
-local camPitch = 0
-local freeCamSavedWalk, freeCamSavedJump
-
-local function getCamRot()
-	return CFrame.fromEulerAnglesYXZ(math.rad(camPitch), math.rad(camYaw), 0)
-end
-
-local function getMoveInput()
-	local rot = getCamRot()
-	local look = rot.LookVector
-	local right = rot.RightVector
-	local move = Vector3.zero
-
-	if humanoid then
-		local md = humanoid.MoveDirection
-		if md.Magnitude > 0 then
-			local u = md.Unit
-			local f = u:Dot(look)
-			local r = u:Dot(right)
-			move += look * f + right * r
-		end
-	end
-
-	if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += look end
-	if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= look end
-	if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += right end
-	if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= right end
-	if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move += Vector3.yAxis end
-	if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move -= Vector3.yAxis end
-
-	if move.Magnitude > 1 then
-		move = move.Unit
-	end
-	return move
-end
-
-UserInputService.InputChanged:Connect(function(input)
-	if not (magicSplit or freeCamActive) then return end
-	if input.UserInputType == Enum.UserInputType.MouseMovement then
-		camYaw -= input.Delta.X * 0.4
-		camPitch = math.clamp(camPitch - input.Delta.Y * 0.4, -89, 89)
-	elseif input.UserInputType == Enum.UserInputType.Touch then
-		camYaw -= input.Delta.X * 0.4
-		camPitch = math.clamp(camPitch - input.Delta.Y * 0.4, -89, 89)
-	end
-end)
-
+-- ============================================================
+-- FREE CAM (Xem từ xa) — dùng chung camera helpers
+-- ============================================================
 local function renderFreeCam(dt)
 	if not freeCamActive then return end
 	local cam = workspace.CurrentCamera
@@ -2865,14 +2835,12 @@ local function startChillMap()
 	Lighting.GlobalShadows = true
 	Lighting.ExposureCompensation = 0.2
 
-	-- SunRays - tia nắng
 	local sunRays = Instance.new("SunRaysEffect")
 	sunRays.Intensity = 0.15
 	sunRays.Spread = 0.9
 	sunRays.Parent = Lighting
 	table.insert(ChillMap.effects, sunRays)
 
-	-- Bloom nhẹ
 	local bloom = Instance.new("BloomEffect")
 	bloom.Intensity = 1.2
 	bloom.Size = 24
@@ -2880,7 +2848,6 @@ local function startChillMap()
 	bloom.Parent = Lighting
 	table.insert(ChillMap.effects, bloom)
 
-	-- ColorCorrection ấm
 	local cc = Instance.new("ColorCorrectionEffect")
 	cc.Brightness = 0.05
 	cc.Contrast = 0.18
@@ -2889,7 +2856,6 @@ local function startChillMap()
 	cc.Parent = Lighting
 	table.insert(ChillMap.effects, cc)
 
-	-- DepthOfField nhẹ
 	local dof = Instance.new("DepthOfFieldEffect")
 	dof.FarIntensity = 0.15
 	dof.FocusDistance = 30
@@ -2898,7 +2864,6 @@ local function startChillMap()
 	dof.Parent = Lighting
 	table.insert(ChillMap.effects, dof)
 
-	-- Atmosphere mềm
 	local atmo = Lighting:FindFirstChildOfClass("Atmosphere")
 	if not atmo then
 		atmo = Instance.new("Atmosphere")
@@ -2954,7 +2919,7 @@ local function stopChillMap()
 end
 
 -- ============================================================
--- SECTION SHADER (trong tab Visual)
+-- SECTION SHADER
 -- ============================================================
 createSection(VisualPage, "Shader", 6)
 
@@ -3399,14 +3364,6 @@ end, 4)
 -- ============================================================
 -- FLOATING BUTTON
 -- ============================================================
-local FloatGui = Instance.new("ScreenGui")
-FloatGui.Name = GUI_NAME .. "_Float"
-FloatGui.ResetOnSpawn = false
-FloatGui.IgnoreGuiInset = true
-FloatGui.DisplayOrder = 2000000
-FloatGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-FloatGui.Parent = PlayerGui
-
 local FloatingButton = Instance.new("TextButton")
 FloatingButton.AnchorPoint = Vector2.new(1, 0)
 FloatingButton.Position = UDim2.new(1, -20, 0, 100)
